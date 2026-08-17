@@ -1,0 +1,1969 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quoridor Lab</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-2: #10182c;
+      --panel: rgba(20, 29, 51, 0.78);
+      --panel-strong: rgba(25, 36, 62, 0.92);
+      --tile: #1d2943;
+      --tile-2: #243250;
+      --tile-muted: #172139;
+      --tile-border: rgba(161, 181, 217, 0.15);
+      --text: #edf4ff;
+      --muted: #94a5c1;
+      --soft: #63718d;
+      --line: rgba(161, 181, 217, 0.16);
+      --blue: #43a5ff;
+      --blue-2: #7bd0ff;
+      --yellow: #ffd36a;
+      --yellow-2: #ffb84d;
+      --red: #ff5f75;
+      --green: #5de3a2;
+      --bot: #ff7a90;
+      --player: #69c6ff;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
+      --radius: 8px;
+      --gap-track: clamp(8px, 1.25vw, 13px);
+      --motion: 180ms cubic-bezier(.2, .8, .2, 1);
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 18% 14%, rgba(67, 165, 255, 0.14), transparent 28%),
+        radial-gradient(circle at 84% 20%, rgba(255, 211, 106, 0.09), transparent 24%),
+        linear-gradient(145deg, var(--bg), #080c17 55%, #0d1425);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app {
+      width: min(1180px, calc(100vw - 32px));
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 28px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 52px);
+      line-height: 0.95;
+      font-weight: 780;
+    }
+
+    .brand p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .turn-badge {
+      min-width: 178px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(20, 29, 51, 0.7);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.18);
+      text-align: right;
+    }
+
+    .turn-badge span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+
+    .turn-badge strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 17px;
+    }
+
+    .game-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 328px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .board-stage,
+    .side-panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .board-stage {
+      padding: clamp(14px, 2vw, 22px);
+    }
+
+    .board-frame {
+      position: relative;
+      margin: 0 auto;
+      width: min(80vh, 100%, 740px);
+      max-width: 740px;
+    }
+
+    .board {
+      position: relative;
+      display: grid;
+      width: 100%;
+      aspect-ratio: 1;
+      grid-template-columns: repeat(8, minmax(0, 1fr) var(--gap-track)) minmax(0, 1fr);
+      grid-template-rows: repeat(8, minmax(0, 1fr) var(--gap-track)) minmax(0, 1fr);
+      padding: 10px;
+      border-radius: 14px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
+        #0d1426;
+      border: 1px solid rgba(180, 199, 232, 0.16);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 24px 55px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .tile {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)),
+        var(--tile);
+      border: 1px solid var(--tile-border);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition:
+        transform var(--motion),
+        background var(--motion),
+        border-color var(--motion),
+        box-shadow var(--motion),
+        opacity var(--motion);
+    }
+
+    .tile.goal-player {
+      box-shadow: inset 0 -3px 0 rgba(105, 198, 255, 0.35);
+    }
+
+    .tile.goal-bot {
+      box-shadow: inset 0 3px 0 rgba(255, 122, 144, 0.32);
+    }
+
+    .tile.legal-move {
+      cursor: pointer;
+      opacity: 1;
+      border-color: rgba(67, 165, 255, 0.74);
+      background:
+        radial-gradient(circle at 50% 46%, rgba(67, 165, 255, 0.34), transparent 42%),
+        linear-gradient(145deg, rgba(123, 208, 255, 0.16), rgba(67, 165, 255, 0.05)),
+        var(--tile-2);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 0 0 1px rgba(67, 165, 255, 0.13),
+        0 12px 28px rgba(67, 165, 255, 0.12);
+    }
+
+    .tile.legal-move::after {
+      content: "";
+      width: 28%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--blue-2);
+      box-shadow: 0 0 20px rgba(67, 165, 255, 0.7);
+      opacity: 0.92;
+      transition: transform var(--motion);
+    }
+
+    .tile.legal-move:hover {
+      transform: scale(1.035);
+      border-color: rgba(123, 208, 255, 0.96);
+      filter: brightness(1.08);
+    }
+
+    .tile.legal-move:hover::after {
+      transform: scale(1.16);
+    }
+
+    .tile.recent-move {
+      animation: tileFlash 850ms ease-out;
+    }
+
+    .slot-segment {
+      z-index: 3;
+      position: relative;
+      border-radius: 999px;
+      opacity: 0;
+      transition: opacity var(--motion), background var(--motion), transform var(--motion);
+    }
+
+    .board.smart-mode .slot-segment {
+      cursor: pointer;
+      opacity: 0.18;
+      background: rgba(255, 211, 106, 0.08);
+    }
+
+    .board.smart-mode .slot-segment:hover {
+      opacity: 0.4;
+      background: rgba(255, 211, 106, 0.16);
+      transform: scale(1.05);
+    }
+
+    .wall-target {
+      z-index: 6;
+      align-self: center;
+      justify-self: center;
+      position: relative;
+      appearance: none;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: inherit;
+      opacity: 0;
+      pointer-events: none;
+      cursor: pointer;
+      transition: opacity var(--motion), transform var(--motion), filter var(--motion);
+    }
+
+    .wall-target.h {
+      width: 100%;
+      height: clamp(26px, calc(var(--gap-track) * 2.7), 34px);
+    }
+
+    .wall-target.v {
+      width: clamp(26px, calc(var(--gap-track) * 2.7), 34px);
+      height: 100%;
+    }
+
+    .wall-target::before {
+      content: "";
+      position: absolute;
+      inset: 50% 4px auto;
+      height: 8px;
+      border-radius: inherit;
+      transform: translateY(-50%);
+      background: rgba(255, 211, 106, 0.2);
+      box-shadow: 0 0 18px rgba(255, 211, 106, 0.12);
+      opacity: 0;
+      transition: background var(--motion), box-shadow var(--motion), height var(--motion);
+    }
+
+    .wall-target.v::before {
+      inset: 4px auto 4px 50%;
+      width: 8px;
+      height: auto;
+      transform: translateX(-50%);
+    }
+
+    .board.smart-mode .wall-target {
+      opacity: 1;
+      pointer-events: none;
+    }
+
+    .wall-target:hover,
+    .wall-target:focus-visible,
+    .wall-target.touch-preview {
+      transform: scale(1.02);
+      outline: none;
+    }
+
+    .wall-target:hover::before,
+    .wall-target:focus-visible::before,
+    .wall-target.touch-preview::before {
+      height: 11px;
+      background: rgba(255, 211, 106, 0.42);
+      box-shadow: 0 0 24px rgba(255, 211, 106, 0.24);
+      opacity: 1;
+    }
+
+    .wall-target.v:hover::before,
+    .wall-target.v:focus-visible::before,
+    .wall-target.v.touch-preview::before {
+      width: 11px;
+      height: auto;
+    }
+
+    .intersection {
+      z-index: 2;
+      border-radius: 50%;
+      background: rgba(132, 150, 179, 0.08);
+      opacity: 0;
+      transition: opacity var(--motion), background var(--motion);
+    }
+
+    .board.smart-mode .intersection {
+      opacity: 1;
+      background: rgba(255, 211, 106, 0.07);
+    }
+
+    .wall-piece {
+      z-index: 7;
+      align-self: center;
+      justify-self: center;
+      border-radius: 999px;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.26), transparent 22%, transparent 72%, rgba(255, 255, 255, 0.18)),
+        linear-gradient(145deg, #f6bd5f, #ad6d2f);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 9px 24px rgba(0, 0, 0, 0.28),
+        0 0 0 1px rgba(255, 216, 138, 0.18);
+    }
+
+    .wall-piece.h {
+      width: calc(100% - 4px);
+      height: min(78%, 12px);
+    }
+
+    .wall-piece.v {
+      width: min(78%, 12px);
+      height: calc(100% - 4px);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 22%, transparent 72%, rgba(255, 255, 255, 0.18)),
+        linear-gradient(145deg, #f6bd5f, #ad6d2f);
+    }
+
+    .wall-piece.preview {
+      z-index: 8;
+      opacity: 0.86;
+      transform: scale(1.015);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.04)),
+        linear-gradient(145deg, var(--yellow), var(--yellow-2));
+      box-shadow:
+        0 0 0 1px rgba(255, 211, 106, 0.42),
+        0 0 28px rgba(255, 211, 106, 0.28),
+        0 10px 26px rgba(0, 0, 0, 0.28);
+      animation: previewIn 160ms ease-out;
+    }
+
+    .wall-piece.preview.illegal {
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02)),
+        linear-gradient(145deg, var(--red), #b72c43);
+      box-shadow:
+        0 0 0 1px rgba(255, 95, 117, 0.5),
+        0 0 26px rgba(255, 95, 117, 0.28),
+        0 10px 26px rgba(0, 0, 0, 0.28);
+    }
+
+    .wall-piece.recent-wall {
+      animation: wallPop 900ms ease-out;
+    }
+
+    .pawn {
+      position: relative;
+      z-index: 9;
+      width: 56%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      transition: transform var(--motion), box-shadow var(--motion);
+    }
+
+    .pawn::before {
+      content: "";
+      position: absolute;
+      inset: -16%;
+      border-radius: inherit;
+      background: currentColor;
+      opacity: 0.16;
+      filter: blur(4px);
+    }
+
+    .pawn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.78), transparent 18%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.28), transparent 34%),
+        currentColor;
+      box-shadow:
+        inset 0 -9px 14px rgba(0, 0, 0, 0.24),
+        0 12px 24px rgba(0, 0, 0, 0.32);
+    }
+
+    .pawn.player {
+      color: var(--player);
+    }
+
+    .pawn.bot {
+      color: var(--bot);
+    }
+
+    .pawn.recent {
+      animation: pawnLand 700ms ease-out;
+    }
+
+    .thinking .pawn.bot {
+      animation: botPulse 900ms ease-in-out infinite;
+    }
+
+    .feedback {
+      min-height: 48px;
+      margin-top: 14px;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(7, 12, 24, 0.34);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+
+    .feedback strong {
+      color: var(--text);
+    }
+
+    .feedback .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 14px currentColor;
+      flex: 0 0 auto;
+    }
+
+    .feedback.bot .dot {
+      background: var(--bot);
+    }
+
+    .feedback.warn .dot {
+      background: var(--red);
+    }
+
+    .feedback.win .dot {
+      background: var(--green);
+    }
+
+    .side-panel {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel-section {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(9, 15, 30, 0.3);
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .restart-btn {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform var(--motion), border-color var(--motion), background var(--motion), box-shadow var(--motion), opacity var(--motion);
+    }
+
+    .restart-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(123, 208, 255, 0.42);
+      background: rgba(255, 255, 255, 0.065);
+    }
+
+    .help-text {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .difficulty-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .difficulty-btn {
+      min-height: 58px;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      cursor: pointer;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      transition: transform var(--motion), border-color var(--motion), background var(--motion), box-shadow var(--motion), opacity var(--motion);
+    }
+
+    .difficulty-btn span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+
+    .difficulty-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(123, 208, 255, 0.42);
+      background: rgba(255, 255, 255, 0.065);
+    }
+
+    .difficulty-btn.active {
+      border-color: rgba(255, 211, 106, 0.72);
+      background:
+        linear-gradient(145deg, rgba(255, 211, 106, 0.18), rgba(67, 165, 255, 0.06)),
+        rgba(255, 255, 255, 0.04);
+      box-shadow: 0 0 0 1px rgba(255, 211, 106, 0.1), 0 14px 32px rgba(255, 211, 106, 0.08);
+    }
+
+    .difficulty-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.52;
+    }
+
+    .online-controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    .room-code {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(13, 20, 38, 0.72);
+      color: var(--text);
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .stats {
+      display: grid;
+      gap: 10px;
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .stat-row strong {
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .player-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--player);
+      box-shadow: 0 0 12px rgba(105, 198, 255, 0.6);
+    }
+
+    .chip-dot.bot {
+      background: var(--bot);
+      box-shadow: 0 0 12px rgba(255, 122, 144, 0.6);
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-row {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .legend-swatch {
+      width: 28px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .legend-swatch.move {
+      background: radial-gradient(circle, var(--blue-2) 0 24%, rgba(67, 165, 255, 0.2) 25%);
+      box-shadow: 0 0 18px rgba(67, 165, 255, 0.24);
+    }
+
+    .legend-swatch.legal {
+      background: linear-gradient(145deg, var(--yellow), var(--yellow-2));
+    }
+
+    .legend-swatch.illegal {
+      background: linear-gradient(145deg, var(--red), #b72c43);
+    }
+
+    .restart-btn {
+      min-height: 44px;
+      padding: 11px 12px;
+      font-weight: 800;
+      background:
+        linear-gradient(145deg, rgba(93, 227, 162, 0.17), rgba(67, 165, 255, 0.08)),
+        rgba(255, 255, 255, 0.04);
+    }
+
+    .shake {
+      animation: shake 280ms ease-in-out;
+    }
+
+    @keyframes previewIn {
+      from { opacity: 0; transform: scale(0.94); }
+      to { opacity: 0.86; transform: scale(1.015); }
+    }
+
+    @keyframes tileFlash {
+      0% { box-shadow: 0 0 0 0 rgba(67, 165, 255, 0.0), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+      18% { box-shadow: 0 0 0 5px rgba(67, 165, 255, 0.22), 0 0 28px rgba(67, 165, 255, 0.28); }
+      100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+    }
+
+    @keyframes wallPop {
+      0% { transform: scale(0.72); filter: brightness(1.6); }
+      45% { transform: scale(1.08); filter: brightness(1.25); }
+      100% { transform: scale(1); filter: brightness(1); }
+    }
+
+    @keyframes pawnLand {
+      0% { transform: translateY(-12%) scale(0.86); }
+      55% { transform: translateY(0) scale(1.08); }
+      100% { transform: translateY(0) scale(1); }
+    }
+
+    @keyframes botPulse {
+      0%, 100% { transform: scale(1); filter: brightness(1); }
+      50% { transform: scale(1.08); filter: brightness(1.18); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      30% { transform: translateX(-5px); }
+      60% { transform: translateX(5px); }
+    }
+
+    @media (max-width: 930px) {
+      .app {
+        width: min(100vw - 20px, 720px);
+        padding: 18px 0;
+      }
+
+      .topbar,
+      .game-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        display: grid;
+      }
+
+      .turn-badge {
+        width: 100%;
+        text-align: left;
+      }
+
+      .game-shell {
+        display: grid;
+      }
+
+      .side-panel {
+        order: -1;
+      }
+
+      .board-frame {
+        width: min(94vw, 640px);
+      }
+
+    }
+
+    @media (max-width: 560px) {
+      .app {
+        width: calc(100vw - 12px);
+        padding: 10px 0;
+      }
+
+      .brand h1 {
+        font-size: 32px;
+      }
+
+      .brand p {
+        font-size: 13px;
+      }
+
+      .board-stage,
+      .side-panel {
+        border-radius: 10px;
+        padding: 10px;
+      }
+
+      .board {
+        padding: 6px;
+        border-radius: 10px;
+      }
+
+      .panel-section {
+        padding: 12px;
+      }
+
+      .difficulty-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 1ms !important;
+        transition-duration: 1ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Quoridor Lab</h1>
+        <p>A focused board duel: race to the far side, or bend the path with walls.</p>
+      </div>
+      <div class="turn-badge" id="turnBadge">
+        <span>Current state</span>
+        <strong>Player turn</strong>
+      </div>
+    </header>
+
+    <main class="game-shell">
+      <section class="board-stage" aria-label="Game board area">
+        <div class="board-frame">
+          <div class="board" id="board" aria-label="Quoridor board"></div>
+        </div>
+        <div class="feedback" id="feedback" role="status" aria-live="polite">
+          <span class="dot"></span>
+          <span><strong>Your turn.</strong> Click a blue tile to move, or click between tiles to place a wall.</span>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Game controls">
+        <section class="panel-section">
+          <h2 class="section-title">Input</h2>
+          <p class="help-text" id="contextHelp">Click a blue tile to move, or click a gap between tiles to place a wall.</p>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Mode</h2>
+          <div class="mode-grid" id="modeGrid">
+            <button class="difficulty-btn active" type="button" data-mode="bot">Vs Bot<span>solo</span></button>
+            <button class="difficulty-btn" type="button" data-mode="online">Online<span>share link</span></button>
+          </div>
+        </section>
+
+        <section class="panel-section" id="onlineSection">
+          <h2 class="section-title">Online match</h2>
+          <div class="online-controls">
+            <button class="restart-btn" id="createRoomBtn" type="button">Create match</button>
+            <button class="restart-btn" id="copyLinkBtn" type="button" disabled>Copy link</button>
+            <div class="room-code" id="roomCodeText">No room yet</div>
+            <p class="help-text" id="onlineStatus">Create a match, then send the link to your opponent.</p>
+          </div>
+        </section>
+
+        <section class="panel-section" id="difficultySection">
+          <h2 class="section-title">Bot difficulty</h2>
+          <div class="difficulty-grid" id="difficultyGrid">
+            <button class="difficulty-btn" type="button" data-difficulty="easy">Easy<span>casual</span></button>
+            <button class="difficulty-btn active" type="button" data-difficulty="normal">Normal<span>balanced</span></button>
+            <button class="difficulty-btn" type="button" data-difficulty="hard">Hard<span>tactical</span></button>
+          </div>
+          <p class="help-text" id="difficultyHelp">Normal bot balances racing and blocking.</p>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Match</h2>
+          <div class="stats">
+            <div class="stat-row">
+              <span class="player-chip"><span class="chip-dot"></span>You</span>
+              <strong id="playerWalls">10 walls</strong>
+            </div>
+            <div class="stat-row">
+              <span class="player-chip"><span class="chip-dot bot"></span>Bot</span>
+              <strong id="botWalls">10 walls</strong>
+            </div>
+            <div class="stat-row">
+              <span>Winner</span>
+              <strong id="winnerText">None</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Legend</h2>
+          <div class="legend">
+            <div class="legend-row">
+              <span class="legend-swatch move"></span>
+              <span>Blue tile means a legal pawn move.</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch legal"></span>
+              <span>Yellow wall preview means legal placement.</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch illegal"></span>
+              <span>Red wall preview means illegal placement.</span>
+            </div>
+          </div>
+        </section>
+
+        <button class="restart-btn" id="restartBtn" type="button">Restart game</button>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const SIZE = 9;
+    const MAX_WALLS = 10;
+    const PLAYER = "player";
+    const BOT = "bot";
+    const BOT_DIFFICULTIES = {
+      easy: {
+        label: "Easy",
+        help: "Easy bot makes more casual moves and rarely blocks.",
+        thinkingMs: 420,
+        randomMoveChance: 0.42,
+        wallChance: 0.14,
+        wallScoreThreshold: 2.2,
+        playerPressure: 1.25,
+        selfPenalty: 1.35,
+        moveNoise: 1.2,
+        wallNoise: 0.55,
+        randomCandidates: 4
+      },
+      normal: {
+        label: "Normal",
+        help: "Normal bot balances racing and blocking.",
+        thinkingMs: 620,
+        randomMoveChance: 0.12,
+        wallChance: 0.34,
+        wallScoreThreshold: 1.2,
+        playerPressure: 2,
+        selfPenalty: 1,
+        moveNoise: 0.18,
+        wallNoise: 0.2,
+        randomCandidates: 8
+      },
+      hard: {
+        label: "Hard",
+        help: "Hard bot races efficiently and looks harder for useful walls.",
+        thinkingMs: 760,
+        randomMoveChance: 0.02,
+        wallChance: 0.58,
+        wallScoreThreshold: 0.65,
+        playerPressure: 2.75,
+        selfPenalty: 0.75,
+        moveNoise: 0.04,
+        wallNoise: 0.06,
+        randomCandidates: 18
+      }
+    };
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const boardEl = document.getElementById("board");
+    const feedbackEl = document.getElementById("feedback");
+    const turnBadgeEl = document.getElementById("turnBadge");
+    const contextHelpEl = document.getElementById("contextHelp");
+    const modeGridEl = document.getElementById("modeGrid");
+    const onlineSectionEl = document.getElementById("onlineSection");
+    const difficultySectionEl = document.getElementById("difficultySection");
+    const createRoomBtn = document.getElementById("createRoomBtn");
+    const copyLinkBtn = document.getElementById("copyLinkBtn");
+    const roomCodeTextEl = document.getElementById("roomCodeText");
+    const onlineStatusEl = document.getElementById("onlineStatus");
+    const difficultyGridEl = document.getElementById("difficultyGrid");
+    const difficultyHelpEl = document.getElementById("difficultyHelp");
+    const playerWallsEl = document.getElementById("playerWalls");
+    const botWallsEl = document.getElementById("botWalls");
+    const winnerTextEl = document.getElementById("winnerText");
+    const restartBtn = document.getElementById("restartBtn");
+
+    let state = createInitialState();
+    let gameMode = "bot";
+    let socket = null;
+    let roomCode = null;
+    let localSide = PLAYER;
+    let onlinePresence = { [PLAYER]: false, [BOT]: false };
+    let onlineStatus = "Create a match, then send the link to your opponent.";
+
+    function createInitialState(botDifficulty = "normal") {
+      return {
+        botDifficulty,
+        phase: "player-selecting",
+        currentTurn: PLAYER,
+        gameOver: false,
+        winner: null,
+        feedbackTone: "",
+        feedback: "<strong>Your turn.</strong> Click a blue tile to move, or click between tiles to place a wall.",
+        hoverWall: null,
+        lastAction: null,
+        pawns: {
+          [PLAYER]: { r: 8, c: 4, walls: MAX_WALLS },
+          [BOT]: { r: 0, c: 4, walls: MAX_WALLS }
+        },
+        walls: {
+          h: new Set(),
+          v: new Set()
+        }
+      };
+    }
+
+    function key(r, c) {
+      return `${r},${c}`;
+    }
+
+    function parseKey(value) {
+      const [r, c] = value.split(",").map(Number);
+      return { r, c };
+    }
+
+    function isPlayerInputLocked() {
+      return state.gameOver
+        || state.currentTurn !== getLocalActor()
+        || state.phase !== "player-selecting"
+        || (gameMode === "online" && (!roomCode || !onlinePresence[PLAYER] || !onlinePresence[BOT]));
+    }
+
+    function render() {
+      const legalMoves = !isPlayerInputLocked() ? getLegalMoves(getLocalActor()) : [];
+      const legalMoveKeys = new Set(legalMoves.map((move) => key(move.r, move.c)));
+      boardEl.className = [
+        "board",
+        "smart-mode",
+        state.phase === "bot-thinking" ? "thinking" : ""
+      ].filter(Boolean).join(" ");
+      boardEl.innerHTML = "";
+
+      renderTiles(legalMoveKeys);
+      renderSlotSegments();
+      renderWallTargets();
+      renderIntersections();
+      renderPlacedWalls();
+      renderWallPreview();
+      renderHud();
+    }
+
+    function renderTiles(legalMoveKeys) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const tile = document.createElement("button");
+          tile.type = "button";
+          tile.className = "tile";
+          tile.dataset.r = String(r);
+          tile.dataset.c = String(c);
+          tile.style.gridRow = String(2 * r + 1);
+          tile.style.gridColumn = String(2 * c + 1);
+          tile.setAttribute("aria-label", `Tile row ${r + 1}, column ${c + 1}`);
+
+          if (r === 0) tile.classList.add("goal-player");
+          if (r === SIZE - 1) tile.classList.add("goal-bot");
+          if (legalMoveKeys.has(key(r, c))) tile.classList.add("legal-move");
+          if (state.lastAction?.type === "move" && state.lastAction.to.r === r && state.lastAction.to.c === c) {
+            tile.classList.add("recent-move");
+          }
+
+          const pawnOwner = pawnAt(r, c);
+          if (pawnOwner) {
+            const pawn = document.createElement("div");
+            pawn.className = `pawn ${pawnOwner}`;
+            if (state.lastAction?.type === "move" && state.lastAction.actor === pawnOwner) {
+              pawn.classList.add("recent");
+            }
+            tile.appendChild(pawn);
+          }
+
+          boardEl.appendChild(tile);
+        }
+      }
+    }
+
+    function renderSlotSegments() {
+      for (let r = 0; r < SIZE - 1; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const seg = document.createElement("div");
+          seg.className = "slot-segment h";
+          seg.dataset.wall = "h";
+          seg.dataset.r = String(r);
+          seg.dataset.c = String(Math.min(c, SIZE - 2));
+          seg.style.gridRow = String(2 * r + 2);
+          seg.style.gridColumn = String(2 * c + 1);
+          boardEl.appendChild(seg);
+        }
+      }
+
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE - 1; c++) {
+          const seg = document.createElement("div");
+          seg.className = "slot-segment v";
+          seg.dataset.wall = "v";
+          seg.dataset.r = String(Math.min(r, SIZE - 2));
+          seg.dataset.c = String(c);
+          seg.style.gridRow = String(2 * r + 1);
+          seg.style.gridColumn = String(2 * c + 2);
+          boardEl.appendChild(seg);
+        }
+      }
+    }
+
+    function renderWallTargets() {
+      for (let r = 0; r < SIZE - 1; r++) {
+        for (let c = 0; c < SIZE - 1; c++) {
+          boardEl.appendChild(createWallTarget("h", r, c));
+          boardEl.appendChild(createWallTarget("v", r, c));
+        }
+      }
+    }
+
+    function createWallTarget(orientation, r, c) {
+      const target = document.createElement("button");
+      target.type = "button";
+      target.className = `wall-target ${orientation}`;
+      target.dataset.wall = orientation;
+      target.dataset.r = String(r);
+      target.dataset.c = String(c);
+      target.setAttribute(
+        "aria-label",
+        `${orientation === "h" ? "Horizontal" : "Vertical"} wall slot row ${r + 1}, column ${c + 1}`
+      );
+
+      if (orientation === "h") {
+        target.style.gridRow = String(2 * r + 2);
+        target.style.gridColumn = `${2 * c + 1} / ${2 * c + 4}`;
+      } else {
+        target.style.gridRow = `${2 * r + 1} / ${2 * r + 4}`;
+        target.style.gridColumn = String(2 * c + 2);
+      }
+
+      return target;
+    }
+
+    function renderIntersections() {
+      for (let r = 0; r < SIZE - 1; r++) {
+        for (let c = 0; c < SIZE - 1; c++) {
+          const intersection = document.createElement("div");
+          intersection.className = "intersection";
+          intersection.style.gridRow = String(2 * r + 2);
+          intersection.style.gridColumn = String(2 * c + 2);
+          boardEl.appendChild(intersection);
+        }
+      }
+    }
+
+    function renderPlacedWalls() {
+      for (const wallKey of state.walls.h) {
+        const { r, c } = parseKey(wallKey);
+        boardEl.appendChild(createWallElement("h", r, c, isRecentWall("h", r, c)));
+      }
+      for (const wallKey of state.walls.v) {
+        const { r, c } = parseKey(wallKey);
+        boardEl.appendChild(createWallElement("v", r, c, isRecentWall("v", r, c)));
+      }
+    }
+
+    function renderWallPreview() {
+      if (!state.hoverWall || isPlayerInputLocked()) return;
+      const { orientation, r, c, legal } = state.hoverWall;
+      const preview = createWallElement(orientation, r, c, false);
+      preview.classList.add("preview");
+      if (!legal) preview.classList.add("illegal");
+      boardEl.appendChild(preview);
+    }
+
+    function createWallElement(orientation, r, c, recent) {
+      const wall = document.createElement("div");
+      wall.className = `wall-piece ${orientation}`;
+      if (recent) wall.classList.add("recent-wall");
+
+      if (orientation === "h") {
+        wall.style.gridRow = String(2 * r + 2);
+        wall.style.gridColumn = `${2 * c + 1} / ${2 * c + 4}`;
+      } else {
+        wall.style.gridRow = `${2 * r + 1} / ${2 * r + 4}`;
+        wall.style.gridColumn = String(2 * c + 2);
+      }
+
+      return wall;
+    }
+
+    function isRecentWall(orientation, r, c) {
+      return state.lastAction?.type === "wall"
+        && state.lastAction.orientation === orientation
+        && state.lastAction.r === r
+        && state.lastAction.c === c;
+    }
+
+    function renderHud() {
+      const phaseLabel = getPhaseLabel();
+      turnBadgeEl.innerHTML = `<span>Current state</span><strong>${phaseLabel}</strong>`;
+      feedbackEl.className = `feedback ${state.feedbackTone || ""}`;
+      feedbackEl.innerHTML = `<span class="dot"></span><span>${state.feedback}</span>`;
+      playerWallsEl.textContent = `${state.pawns[PLAYER].walls} walls`;
+      botWallsEl.textContent = `${state.pawns[BOT].walls} walls`;
+      winnerTextEl.textContent = state.winner ? displayNameFor(state.winner) : "None";
+      difficultyHelpEl.textContent = getBotProfile().help;
+      onlineSectionEl.classList.toggle("hidden", gameMode !== "online");
+      difficultySectionEl.classList.toggle("hidden", gameMode !== "bot");
+      roomCodeTextEl.textContent = roomCode ? `Room ${roomCode}` : "No room yet";
+      onlineStatusEl.textContent = onlineStatus;
+      copyLinkBtn.disabled = !roomCode;
+
+      modeGridEl.querySelectorAll(".difficulty-btn").forEach((button) => {
+        button.classList.toggle("active", button.dataset.mode === gameMode);
+      });
+
+      difficultyGridEl.querySelectorAll(".difficulty-btn").forEach((button) => {
+        button.classList.toggle("active", button.dataset.difficulty === state.botDifficulty);
+        button.disabled = gameMode !== "bot" || isPlayerInputLocked();
+      });
+
+      if (state.gameOver) {
+        contextHelpEl.textContent = `${displayNameFor(state.winner)} wins. Restart to play another round.`;
+      } else if (state.phase === "bot-thinking") {
+        contextHelpEl.textContent = "Bot is thinking. Player input is locked until it finishes.";
+      } else if (state.phase === "bot-animating") {
+        contextHelpEl.textContent = "Bot action is resolving. Watch the highlighted tile or wall.";
+      } else if (gameMode === "online" && (!onlinePresence[PLAYER] || !onlinePresence[BOT])) {
+        contextHelpEl.textContent = "Waiting for both players to connect.";
+      } else if (gameMode === "online" && state.currentTurn !== localSide) {
+        contextHelpEl.textContent = "Opponent turn. Watch for their move or wall.";
+      } else {
+        contextHelpEl.textContent = "Click a blue tile to move, or click a gap between tiles to place a wall.";
+      }
+    }
+
+    function getPhaseLabel() {
+      if (state.gameOver) return `${displayNameFor(state.winner)} wins`;
+      if (state.phase === "bot-thinking") return "Bot thinking";
+      if (state.phase === "bot-animating") return "Bot move";
+      if (gameMode === "online" && state.currentTurn !== localSide) return "Opponent turn";
+      return "Player turn";
+    }
+
+    function getLocalActor() {
+      return gameMode === "online" ? localSide : PLAYER;
+    }
+
+    function displayNameFor(actor) {
+      if (gameMode === "online") return actor === localSide ? "You" : "Opponent";
+      return actor === PLAYER ? "You" : "Bot";
+    }
+
+    function setFeedback(message, tone = "") {
+      state.feedback = message;
+      state.feedbackTone = tone;
+    }
+
+    function pawnAt(r, c) {
+      if (state.pawns[PLAYER].r === r && state.pawns[PLAYER].c === c) return PLAYER;
+      if (state.pawns[BOT].r === r && state.pawns[BOT].c === c) return BOT;
+      return null;
+    }
+
+    // Input handling
+    modeGridEl.addEventListener("click", (event) => {
+      const button = event.target.closest(".difficulty-btn");
+      if (!button) return;
+      setGameMode(button.dataset.mode);
+    });
+
+    createRoomBtn.addEventListener("click", () => {
+      setGameMode("online");
+      ensureSocket();
+      sendSocket({ type: "createRoom" });
+      onlineStatus = "Creating match...";
+      render();
+    });
+
+    copyLinkBtn.addEventListener("click", async () => {
+      if (!roomCode) return;
+      const url = roomUrl(roomCode);
+      try {
+        await navigator.clipboard.writeText(url);
+        onlineStatus = "Link copied. Send it to your opponent.";
+      } catch {
+        onlineStatus = url;
+      }
+      render();
+    });
+
+    difficultyGridEl.addEventListener("click", (event) => {
+      const button = event.target.closest(".difficulty-btn");
+      if (!button || isPlayerInputLocked()) return;
+      setBotDifficulty(button.dataset.difficulty);
+    });
+
+    boardEl.addEventListener("pointermove", (event) => {
+      if (isPlayerInputLocked()) return;
+      updateHoverWallFromPointer(event);
+    });
+
+    boardEl.addEventListener("focusin", (event) => {
+      if (isPlayerInputLocked()) return;
+      updateHoverWallFromPointer(event);
+    });
+
+    boardEl.addEventListener("mouseleave", () => {
+      if (!state.hoverWall) return;
+      state.hoverWall = null;
+      render();
+    });
+
+    boardEl.addEventListener("click", async (event) => {
+      if (isPlayerInputLocked()) return;
+
+      const tile = event.target.closest(".tile");
+      if (tile?.classList.contains("legal-move")) {
+        await handlePlayerMove(Number(tile.dataset.r), Number(tile.dataset.c));
+        return;
+      }
+
+      const wall = getWallFromPointerEvent(event);
+      if (wall) {
+        await handlePlayerWall(wall.orientation, wall.r, wall.c);
+        return;
+      }
+
+      if (!tile) return;
+      await handlePlayerMove(Number(tile.dataset.r), Number(tile.dataset.c));
+    });
+
+    function updateHoverWallFromPointer(event) {
+      const wall = getWallFromPointerEvent(event);
+      if (!wall) {
+        clearHoverWall();
+        return;
+      }
+      setHoverWall(wall);
+    }
+
+    function setHoverWall(wall) {
+      const legal = isWallLegal(wall.orientation, wall.r, wall.c);
+      if (
+        state.hoverWall
+        && state.hoverWall.orientation === wall.orientation
+        && state.hoverWall.r === wall.r
+        && state.hoverWall.c === wall.c
+        && state.hoverWall.legal === legal
+      ) {
+        return;
+      }
+
+      state.hoverWall = { ...wall, legal };
+      render();
+    }
+
+    function clearHoverWall() {
+      if (!state.hoverWall) return;
+      state.hoverWall = null;
+      render();
+    }
+
+    function getWallFromPointerEvent(event) {
+      const metrics = getBoardTrackMetrics();
+      if (!metrics) return null;
+
+      const x = event.clientX - metrics.left;
+      const y = event.clientY - metrics.top;
+      if (x < 0 || y < 0 || x > metrics.width || y > metrics.height) return null;
+
+      const row = nearestGapIndex(metrics.rows, y);
+      const col = nearestGapIndex(metrics.cols, x);
+      if (!row.inRange && !col.inRange) return null;
+
+      if (row.inRange && (!col.inRange || row.ratio <= col.ratio)) {
+        return { orientation: "h", r: row.index, c: nearestWallSpanIndex(metrics.cols, x) };
+      }
+
+      return { orientation: "v", r: nearestWallSpanIndex(metrics.rows, y), c: col.index };
+    }
+
+    function getBoardTrackMetrics() {
+      const rect = boardEl.getBoundingClientRect();
+      const styles = getComputedStyle(boardEl);
+      const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+      const paddingRight = parseFloat(styles.paddingRight) || 0;
+      const paddingTop = parseFloat(styles.paddingTop) || 0;
+      const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+      const cols = parseTrackList(styles.gridTemplateColumns);
+      const rows = parseTrackList(styles.gridTemplateRows);
+
+      if (cols.length !== 17 || rows.length !== 17) return null;
+
+      return {
+        cols,
+        rows,
+        left: rect.left + paddingLeft,
+        top: rect.top + paddingTop,
+        width: rect.width - paddingLeft - paddingRight,
+        height: rect.height - paddingTop - paddingBottom
+      };
+    }
+
+    function parseTrackList(value) {
+      return value
+        .split(" ")
+        .map((track) => parseFloat(track))
+        .filter((track) => Number.isFinite(track) && track > 0);
+    }
+
+    function nearestGapIndex(tracks, position) {
+      let best = { index: 0, distance: Infinity, inRange: false };
+      const starts = trackStarts(tracks);
+
+      for (let index = 0; index < SIZE - 1; index++) {
+        const trackIndex = 2 * index + 1;
+        const center = starts[trackIndex] + tracks[trackIndex] / 2;
+        const distance = Math.abs(position - center);
+        if (distance < best.distance) {
+          const tileSize = Math.min(tracks[Math.max(0, trackIndex - 1)], tracks[Math.min(16, trackIndex + 1)]);
+          const threshold = Math.max(14, Math.min(24, tileSize * 0.28));
+          best = { index, distance, ratio: distance / threshold, inRange: distance <= threshold };
+        }
+      }
+
+      return best;
+    }
+
+    function nearestWallSpanIndex(tracks, position) {
+      let best = { index: 0, distance: Infinity };
+      const starts = trackStarts(tracks);
+
+      for (let index = 0; index < SIZE - 1; index++) {
+        const startTrack = 2 * index;
+        const endTrack = 2 * index + 2;
+        const start = starts[startTrack];
+        const end = starts[endTrack] + tracks[endTrack];
+        const center = (start + end) / 2;
+        const distance = Math.abs(position - center);
+        if (distance < best.distance) best = { index, distance };
+      }
+
+      return best.index;
+    }
+
+    function trackStarts(tracks) {
+      const starts = [];
+      let cursor = 0;
+      for (const track of tracks) {
+        starts.push(cursor);
+        cursor += track;
+      }
+      return starts;
+    }
+
+    restartBtn.addEventListener("click", () => {
+      if (gameMode === "online" && roomCode) {
+        sendSocket({ type: "restart" });
+        return;
+      }
+      state = createInitialState(state.botDifficulty);
+      render();
+    });
+
+    function getBotProfile() {
+      return BOT_DIFFICULTIES[state.botDifficulty] || BOT_DIFFICULTIES.normal;
+    }
+
+    function setBotDifficulty(difficulty) {
+      if (!BOT_DIFFICULTIES[difficulty]) return;
+      state.botDifficulty = difficulty;
+      setFeedback(`<strong>${BOT_DIFFICULTIES[difficulty].label} bot selected.</strong> ${BOT_DIFFICULTIES[difficulty].help}`);
+      render();
+    }
+
+    function setGameMode(mode) {
+      if (mode !== "bot" && mode !== "online") return;
+      gameMode = mode;
+      state.hoverWall = null;
+
+      if (mode === "bot") {
+        closeSocket();
+        roomCode = null;
+        localSide = PLAYER;
+        onlinePresence = { [PLAYER]: false, [BOT]: false };
+        onlineStatus = "Create a match, then send the link to your opponent.";
+        state = createInitialState(state.botDifficulty);
+      } else {
+        ensureSocket();
+        onlineStatus = roomCode ? "Connected to online match." : "Create a match, then send the link to your opponent.";
+      }
+
+      render();
+    }
+
+    function ensureSocket() {
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(`${protocol}//${location.host}/ws`);
+      onlineStatus = "Connecting...";
+
+      socket.addEventListener("open", () => {
+        onlineStatus = roomCode ? "Reconnected. Joining room..." : "Connected. Create a match or open a room link.";
+        if (roomCode) sendSocket({ type: "joinRoom", roomCode });
+        render();
+      });
+
+      socket.addEventListener("message", (event) => {
+        const message = JSON.parse(event.data);
+        handleSocketMessage(message);
+      });
+
+      socket.addEventListener("close", () => {
+        if (gameMode !== "online") return;
+        onlineStatus = "Disconnected. Reconnecting...";
+        render();
+        setTimeout(() => {
+          if (gameMode === "online") ensureSocket();
+        }, 900);
+      });
+
+      socket.addEventListener("error", () => {
+        onlineStatus = "Connection error. Retrying...";
+        render();
+      });
+    }
+
+    function closeSocket() {
+      if (!socket) return;
+      const current = socket;
+      socket = null;
+      current.close();
+    }
+
+    function sendSocket(message) {
+      ensureSocket();
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        const retry = () => sendSocket(message);
+        socket?.addEventListener("open", retry, { once: true });
+        return;
+      }
+      socket.send(JSON.stringify(message));
+    }
+
+    function handleSocketMessage(message) {
+      if (message.type === "roomState") {
+        roomCode = message.roomCode;
+        localSide = message.side;
+        onlinePresence = message.presence;
+        applyOnlineState(message.state);
+        history.replaceState(null, "", `?room=${roomCode}`);
+        onlineStatus = getOnlineStatus();
+        render();
+        return;
+      }
+
+      if (message.type === "error") {
+        onlineStatus = message.message || "Online match error.";
+        setFeedback(`<strong>${onlineStatus}</strong>`, "warn");
+        render();
+      }
+    }
+
+    function applyOnlineState(nextState) {
+      const botDifficulty = state.botDifficulty;
+      state = {
+        ...nextState,
+        botDifficulty,
+        phase: "player-selecting",
+        feedbackTone: nextState.gameOver ? (nextState.winner === localSide ? "win" : "warn") : "",
+        feedback: onlineFeedback(nextState),
+        hoverWall: null,
+        walls: {
+          h: new Set(nextState.walls.h),
+          v: new Set(nextState.walls.v)
+        }
+      };
+    }
+
+    function onlineFeedback(nextState) {
+      if (nextState.gameOver) return `<strong>${displayNameFor(nextState.winner)} wins.</strong> Restart to play another round.`;
+      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return "<strong>Waiting for opponent.</strong> Send the room link to start.";
+      if (nextState.currentTurn === localSide) return "<strong>Your turn.</strong> Move or place a wall.";
+      return "<strong>Opponent turn.</strong> Waiting for their action.";
+    }
+
+    function getOnlineStatus() {
+      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `Room ${roomCode}: waiting for opponent.`;
+      if (state.gameOver) return `${displayNameFor(state.winner)} won room ${roomCode}.`;
+      return state.currentTurn === localSide ? `Room ${roomCode}: your turn.` : `Room ${roomCode}: opponent turn.`;
+    }
+
+    function roomUrl(code) {
+      return `${location.origin}${location.pathname}?room=${code}`;
+    }
+
+    function playerReadyFeedback() {
+      return "<strong>Your turn.</strong> Click a blue tile to move, or click between tiles to place a wall.";
+    }
+
+    async function handlePlayerMove(r, c) {
+      const actor = getLocalActor();
+      const legal = getLegalMoves(actor).some((move) => move.r === r && move.c === c);
+      if (!legal) {
+        rejectInput("<strong>Illegal move.</strong> Choose one of the highlighted blue tiles.");
+        return;
+      }
+
+      if (gameMode === "online") {
+        sendSocket({ type: "action", action: { type: "move", to: { r, c } } });
+        return;
+      }
+
+      const from = { r: state.pawns[actor].r, c: state.pawns[actor].c };
+      state.pawns[actor].r = r;
+      state.pawns[actor].c = c;
+      state.lastAction = { type: "move", actor, from, to: { r, c } };
+      state.hoverWall = null;
+      setFeedback("<strong>You moved.</strong> The bot will respond now.", "");
+      render();
+
+      if (finishIfWon()) return;
+      await runBotTurn();
+    }
+
+    async function handlePlayerWall(orientation, r, c) {
+      const actor = getLocalActor();
+      if (state.pawns[actor].walls <= 0) {
+        rejectInput("<strong>No walls left.</strong> Move your pawn instead.");
+        return;
+      }
+
+      if (!isWallLegal(orientation, r, c)) {
+        state.hoverWall = { orientation, r, c, legal: false };
+        rejectInput("<strong>Illegal wall.</strong> Walls cannot overlap, cross, leave the board, or block all paths.");
+        return;
+      }
+
+      if (gameMode === "online") {
+        sendSocket({ type: "action", action: { type: "wall", orientation, r, c } });
+        return;
+      }
+
+      placeWall(orientation, r, c, actor);
+      setFeedback("<strong>You placed a wall.</strong> The bot will respond now.", "");
+      render();
+      await runBotTurn();
+    }
+
+    function rejectInput(message) {
+      setFeedback(message, "warn");
+      boardEl.classList.remove("shake");
+      void boardEl.offsetWidth;
+      boardEl.classList.add("shake");
+      render();
+    }
+
+    // Move validation
+    function getLegalMoves(actor) {
+      const self = state.pawns[actor];
+      const other = state.pawns[actor === PLAYER ? BOT : PLAYER];
+      const moves = [];
+      const directions = [
+        { dr: -1, dc: 0 },
+        { dr: 1, dc: 0 },
+        { dr: 0, dc: -1 },
+        { dr: 0, dc: 1 }
+      ];
+
+      for (const dir of directions) {
+        const adjacent = { r: self.r + dir.dr, c: self.c + dir.dc };
+        if (!insideCell(adjacent.r, adjacent.c) || isBlocked(self, adjacent)) continue;
+
+        if (adjacent.r === other.r && adjacent.c === other.c) {
+          const behind = { r: adjacent.r + dir.dr, c: adjacent.c + dir.dc };
+          if (insideCell(behind.r, behind.c) && !isBlocked(adjacent, behind)) {
+            moves.push(behind);
+          } else {
+            const sideDirs = dir.dr !== 0
+              ? [{ dr: 0, dc: -1 }, { dr: 0, dc: 1 }]
+              : [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }];
+            for (const sideDir of sideDirs) {
+              const diagonal = { r: adjacent.r + sideDir.dr, c: adjacent.c + sideDir.dc };
+              if (insideCell(diagonal.r, diagonal.c) && !isBlocked(adjacent, diagonal)) {
+                moves.push(diagonal);
+              }
+            }
+          }
+        } else {
+          moves.push(adjacent);
+        }
+      }
+
+      return uniquePositions(moves);
+    }
+
+    function uniquePositions(positions) {
+      const seen = new Set();
+      return positions.filter((position) => {
+        const value = key(position.r, position.c);
+        if (seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+    }
+
+    function insideCell(r, c) {
+      return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+    }
+
+    function isBlocked(a, b) {
+      if (!insideCell(a.r, a.c) || !insideCell(b.r, b.c)) return true;
+
+      if (a.r === b.r) {
+        const row = a.r;
+        const leftCol = Math.min(a.c, b.c);
+        return state.walls.v.has(key(row, leftCol)) || state.walls.v.has(key(row - 1, leftCol));
+      }
+
+      if (a.c === b.c) {
+        const topRow = Math.min(a.r, b.r);
+        const col = a.c;
+        return state.walls.h.has(key(topRow, col)) || state.walls.h.has(key(topRow, col - 1));
+      }
+
+      return true;
+    }
+
+    // Wall validation
+    function isWallLegal(orientation, r, c) {
+      if (!insideWallSlot(r, c)) return false;
+      const wallKey = key(r, c);
+
+      if (orientation === "h") {
+        if (state.walls.h.has(wallKey)) return false;
+        if (state.walls.h.has(key(r, c - 1)) || state.walls.h.has(key(r, c + 1))) return false;
+        if (state.walls.v.has(wallKey)) return false;
+      } else {
+        if (state.walls.v.has(wallKey)) return false;
+        if (state.walls.v.has(key(r - 1, c)) || state.walls.v.has(key(r + 1, c))) return false;
+        if (state.walls.h.has(wallKey)) return false;
+      }
+
+      state.walls[orientation].add(wallKey);
+      const keepsPaths = hasPathToGoal(PLAYER) && hasPathToGoal(BOT);
+      state.walls[orientation].delete(wallKey);
+      return keepsPaths;
+    }
+
+    function insideWallSlot(r, c) {
+      return r >= 0 && r < SIZE - 1 && c >= 0 && c < SIZE - 1;
+    }
+
+    function placeWall(orientation, r, c, actor) {
+      state.walls[orientation].add(key(r, c));
+      state.pawns[actor].walls -= 1;
+      state.lastAction = { type: "wall", actor, orientation, r, c };
+      state.hoverWall = null;
+    }
+
+    // Pathfinding
+    function hasPathToGoal(actor) {
+      return shortestPathFrom(state.pawns[actor], goalRowFor(actor)).length > 0;
+    }
+
+    function shortestPathFor(actor) {
+      return shortestPathFrom(state.pawns[actor], goalRowFor(actor));
+    }
+
+    function pathLengthFrom(position, actor) {
+      const path = shortestPathFrom(position, goalRowFor(actor));
+      return path.length ? path.length - 1 : Infinity;
+    }
+
+    function goalRowFor(actor) {
+      return actor === PLAYER ? 0 : SIZE - 1;
+    }
+
+    function shortestPathFrom(start, goalRow) {
+      const queue = [{ r: start.r, c: start.c }];
+      const cameFrom = new Map([[key(start.r, start.c), null]]);
+
+      for (let index = 0; index < queue.length; index++) {
+        const current = queue[index];
+        if (current.r === goalRow) return reconstructPath(current, cameFrom);
+
+        for (const next of neighborsIgnoringPawns(current)) {
+          const nextKey = key(next.r, next.c);
+          if (cameFrom.has(nextKey)) continue;
+          cameFrom.set(nextKey, key(current.r, current.c));
+          queue.push(next);
+        }
+      }
+
+      return [];
+    }
+
+    function reconstructPath(end, cameFrom) {
+      const path = [end];
+      let cursor = cameFrom.get(key(end.r, end.c));
+      while (cursor) {
+        const position = parseKey(cursor);
+        path.push(position);
+        cursor = cameFrom.get(cursor);
+      }
+      return path.reverse();
+    }
+
+    function neighborsIgnoringPawns(position) {
+      const neighbors = [];
+      const directions = [
+        { dr: -1, dc: 0 },
+        { dr: 1, dc: 0 },
+        { dr: 0, dc: -1 },
+        { dr: 0, dc: 1 }
+      ];
+
+      for (const dir of directions) {
+        const next = { r: position.r + dir.dr, c: position.c + dir.dc };
+        if (insideCell(next.r, next.c) && !isBlocked(position, next)) {
+          neighbors.push(next);
+        }
+      }
+
+      return neighbors;
+    }
+
+    // Bot logic
+    async function runBotTurn() {
+      state.currentTurn = BOT;
+      state.phase = "bot-thinking";
+      const profile = getBotProfile();
+      setFeedback(`<strong>${profile.label} bot thinking...</strong> Player input is locked.`, "bot");
+      render();
+      await sleep(profile.thinkingMs);
+
+      const action = chooseBotAction(profile);
+      state.phase = "bot-animating";
+
+      if (action.type === "wall") {
+        placeWall(action.orientation, action.r, action.c, BOT);
+        setFeedback(`<strong>${profile.label} bot placed a wall.</strong> The new wall is highlighted.`, "bot");
+      } else {
+        const from = { r: state.pawns[BOT].r, c: state.pawns[BOT].c };
+        state.pawns[BOT].r = action.to.r;
+        state.pawns[BOT].c = action.to.c;
+        state.lastAction = { type: "move", actor: BOT, from, to: action.to };
+        setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
+      }
+
+      render();
+      await sleep(720);
+
+      if (finishIfWon()) return;
+
+      state.currentTurn = PLAYER;
+      state.phase = "player-selecting";
+      setFeedback(playerReadyFeedback());
+      render();
+    }
+
+    function chooseBotAction(profile = getBotProfile()) {
+      const wall = chooseBotWall(profile);
+      if (wall) return wall;
+
+      const legalMoves = getLegalMoves(BOT);
+      if (!legalMoves.length) return { type: "move", to: { ...state.pawns[BOT] } };
+
+      if (Math.random() < profile.randomMoveChance) {
+        return { type: "move", to: legalMoves[Math.floor(Math.random() * legalMoves.length)] };
+      }
+
+      const scored = legalMoves.map((move) => ({
+        move,
+        score: scoreBotMove(move, profile)
+      })).sort((a, b) => a.score - b.score);
+
+      return { type: "move", to: scored[0].move };
+    }
+
+    function scoreBotMove(move, profile) {
+      const botPath = pathLengthFrom(move, BOT);
+      const playerPath = shortestPathFor(PLAYER).length;
+      const centerBias = Math.abs(move.c - 4) * 0.04;
+      const racePressure = playerPath <= botPath + 1 ? -0.18 : 0;
+      return botPath + centerBias + racePressure + Math.random() * profile.moveNoise;
+    }
+
+    function chooseBotWall(profile = getBotProfile()) {
+      if (state.pawns[BOT].walls <= 0) return null;
+      if (Math.random() > profile.wallChance) return null;
+
+      const playerDistance = shortestPathFor(PLAYER).length;
+      const botDistance = shortestPathFor(BOT).length;
+      if (playerDistance === 0 || botDistance === 0 || playerDistance > botDistance + 3) return null;
+
+      const candidates = generateWallCandidatesNear(state.pawns[PLAYER], profile.randomCandidates);
+      let best = null;
+
+      for (const candidate of candidates) {
+        if (!isWallLegal(candidate.orientation, candidate.r, candidate.c)) continue;
+
+        state.walls[candidate.orientation].add(key(candidate.r, candidate.c));
+        const newPlayerDistance = shortestPathFor(PLAYER).length;
+        const newBotDistance = shortestPathFor(BOT).length;
+        state.walls[candidate.orientation].delete(key(candidate.r, candidate.c));
+
+        const score = (newPlayerDistance - playerDistance) * profile.playerPressure
+          - (newBotDistance - botDistance) * profile.selfPenalty
+          + Math.random() * profile.wallNoise;
+        if (!best || score > best.score) best = { ...candidate, score };
+      }
+
+      if (!best || best.score < profile.wallScoreThreshold) return null;
+      return { type: "wall", orientation: best.orientation, r: best.r, c: best.c };
+    }
+
+    function generateWallCandidatesNear(position, randomCandidates = 8) {
+      const candidates = [];
+      const rows = [position.r - 1, position.r, position.r + 1].map(clampWallIndex);
+      const cols = [position.c - 1, position.c, position.c + 1].map(clampWallIndex);
+
+      for (const r of rows) {
+        for (const c of cols) {
+          candidates.push({ orientation: "h", r, c });
+          candidates.push({ orientation: "v", r, c });
+        }
+      }
+
+      for (let i = 0; i < randomCandidates; i++) {
+        candidates.push({
+          orientation: Math.random() > 0.5 ? "h" : "v",
+          r: Math.floor(Math.random() * (SIZE - 1)),
+          c: Math.floor(Math.random() * (SIZE - 1))
+        });
+      }
+
+      return shuffle(uniqueWallCandidates(candidates));
+    }
+
+    function clampWallIndex(value) {
+      return Math.max(0, Math.min(SIZE - 2, value));
+    }
+
+    function uniqueWallCandidates(candidates) {
+      const seen = new Set();
+      return candidates.filter((candidate) => {
+        const value = `${candidate.orientation}:${candidate.r},${candidate.c}`;
+        if (seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+    }
+
+    function shuffle(items) {
+      return items
+        .map((item) => ({ item, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ item }) => item);
+    }
+
+    function finishIfWon() {
+      if (state.pawns[PLAYER].r === goalRowFor(PLAYER)) {
+        state.gameOver = true;
+        state.phase = "game-over";
+        state.winner = PLAYER;
+        setFeedback("<strong>You win.</strong> Restart to play another round.", "win");
+        render();
+        return true;
+      }
+
+      if (state.pawns[BOT].r === goalRowFor(BOT)) {
+        state.gameOver = true;
+        state.phase = "game-over";
+        state.winner = BOT;
+        setFeedback("<strong>Bot wins.</strong> Restart to try again.", "warn");
+        render();
+        return true;
+      }
+
+      return false;
+    }
+
+    const startupRoom = new URLSearchParams(location.search).get("room");
+    if (startupRoom) {
+      gameMode = "online";
+      roomCode = startupRoom.trim().toUpperCase();
+      onlineStatus = `Joining room ${roomCode}...`;
+      ensureSocket();
+    }
+
+    render();
+  </script>
+</body>
+</html>
