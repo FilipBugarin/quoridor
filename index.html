@@ -370,6 +370,15 @@
       animation: previewIn 160ms ease-out;
     }
 
+    .wall-piece.preview.touch-confirm {
+      opacity: 0.96;
+      transform: scale(1.08);
+      box-shadow:
+        0 0 0 2px rgba(255, 211, 106, 0.58),
+        0 0 36px rgba(255, 211, 106, 0.36),
+        0 14px 34px rgba(0, 0, 0, 0.32);
+    }
+
     .wall-piece.preview.illegal {
       background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02)),
@@ -1284,6 +1293,7 @@
     let boardMetricsCache = null;
     let audioContext = null;
     let soundEnabled = localStorage.getItem("quoridor:sound") !== "off";
+    let lastPointerType = "mouse";
     const wallLegalityCache = new Map();
 
     function createInitialState(botDifficulty = "normal") {
@@ -1468,9 +1478,10 @@
 
     function renderWallPreview() {
       if (!state.hoverWall || isPlayerInputLocked()) return;
-      const { orientation, r, c, legal } = state.hoverWall;
+      const { orientation, r, c, legal, confirm } = state.hoverWall;
       const preview = createWallElement(orientation, r, c, false);
       preview.classList.add("preview");
+      if (confirm) preview.classList.add("touch-confirm");
       if (!legal) preview.classList.add("illegal");
       boardEl.appendChild(preview);
     }
@@ -1827,7 +1838,13 @@
       setBotDifficulty(button.dataset.difficulty);
     });
 
+    boardEl.addEventListener("pointerdown", (event) => {
+      lastPointerType = event.pointerType || "mouse";
+    });
+
     boardEl.addEventListener("pointermove", (event) => {
+      lastPointerType = event.pointerType || "mouse";
+      if (isTouchPointer(event)) return;
       if (isPlayerInputLocked()) return;
       updateHoverWallFromPointer(event);
     });
@@ -1838,9 +1855,7 @@
     });
 
     boardEl.addEventListener("mouseleave", () => {
-      if (!state.hoverWall) return;
-      state.hoverWall = null;
-      render();
+      clearHoverWall();
     });
 
     boardEl.addEventListener("click", async (event) => {
@@ -1854,6 +1869,10 @@
 
       const wall = getWallFromPointerEvent(event);
       if (wall) {
+        if (isTouchInput()) {
+          await handleTouchWallSelection(wall);
+          return;
+        }
         await handlePlayerWall(wall.orientation, wall.r, wall.c);
         return;
       }
@@ -1869,6 +1888,37 @@
         return;
       }
       setHoverWall(wall);
+    }
+
+    function isTouchPointer(event) {
+      return event.pointerType === "touch" || event.pointerType === "pen";
+    }
+
+    function isTouchInput() {
+      return lastPointerType === "touch"
+        || lastPointerType === "pen"
+        || window.matchMedia("(pointer: coarse)").matches;
+    }
+
+    async function handleTouchWallSelection(wall) {
+      const existing = state.hoverWall;
+      const legal = getCachedWallLegality(wall.orientation, wall.r, wall.c);
+      const sameWall = existing
+        && existing.orientation === wall.orientation
+        && existing.r === wall.r
+        && existing.c === wall.c;
+
+      if (!sameWall || !existing.confirm) {
+        state.hoverWall = { ...wall, legal, confirm: true };
+        syncWallPreview();
+        setFeedback(legal
+          ? "<strong>Wall preview.</strong> Tap the same wall again to place it."
+          : "<strong>Illegal wall.</strong> Pick another gap.", legal ? "" : "warn");
+        renderHud();
+        return;
+      }
+
+      await handlePlayerWall(wall.orientation, wall.r, wall.c);
     }
 
     function setHoverWall(wall) {
@@ -1927,8 +1977,9 @@
       const y = event.clientY - metrics.top;
       if (x < 0 || y < 0 || x > metrics.width || y > metrics.height) return null;
 
-      const row = nearestGapIndex(metrics.rows, y);
-      const col = nearestGapIndex(metrics.cols, x);
+      const expandedTarget = isTouchInput();
+      const row = nearestGapIndex(metrics.rows, y, expandedTarget);
+      const col = nearestGapIndex(metrics.cols, x, expandedTarget);
       if (!row.inRange && !col.inRange) return null;
 
       if (row.inRange && (!col.inRange || row.ratio <= col.ratio)) {
@@ -1970,7 +2021,7 @@
         .filter((track) => Number.isFinite(track) && track > 0);
     }
 
-    function nearestGapIndex(tracks, position) {
+    function nearestGapIndex(tracks, position, expandedTarget = false) {
       let best = { index: 0, distance: Infinity, inRange: false };
       const starts = trackStarts(tracks);
 
@@ -1980,7 +2031,9 @@
         const distance = Math.abs(position - center);
         if (distance < best.distance) {
           const tileSize = Math.min(tracks[Math.max(0, trackIndex - 1)], tracks[Math.min(16, trackIndex + 1)]);
-          const threshold = Math.max(14, Math.min(24, tileSize * 0.28));
+          const threshold = expandedTarget
+            ? Math.max(24, Math.min(38, tileSize * 0.44))
+            : Math.max(14, Math.min(24, tileSize * 0.28));
           best = { index, distance, ratio: distance / threshold, inRange: distance <= threshold };
         }
       }
