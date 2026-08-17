@@ -1331,6 +1331,11 @@
       boardEl.appendChild(preview);
     }
 
+    function syncWallPreview() {
+      boardEl.querySelectorAll(".wall-piece.preview").forEach((preview) => preview.remove());
+      renderWallPreview();
+    }
+
     function createWallElement(orientation, r, c, recent) {
       const wall = document.createElement("div");
       wall.className = `wall-piece ${orientation}`;
@@ -1602,13 +1607,13 @@
       }
 
       state.hoverWall = { ...wall, legal };
-      render();
+      syncWallPreview();
     }
 
     function clearHoverWall() {
       if (!state.hoverWall) return;
       state.hoverWall = null;
-      render();
+      syncWallPreview();
     }
 
     function getWallFromPointerEvent(event) {
