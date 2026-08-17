@@ -521,6 +521,63 @@
       pointer-events: auto;
     }
 
+    .qr-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 24;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: rgba(5, 9, 18, 0.62);
+      backdrop-filter: blur(9px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+
+    .qr-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .qr-dialog {
+      width: min(420px, 100%);
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+      border: 1px solid rgba(161, 181, 217, 0.22);
+      border-radius: 12px;
+      background: linear-gradient(145deg, rgba(23, 34, 58, 0.96), rgba(10, 16, 31, 0.98));
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.52);
+      text-align: center;
+      transform: translateY(18px) scale(0.96);
+      transition: transform 260ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .qr-overlay.open .qr-dialog {
+      transform: translateY(0) scale(1);
+    }
+
+    .qr-dialog h2,
+    .qr-dialog p {
+      margin: 0;
+    }
+
+    .qr-dialog h2 {
+      font-size: 24px;
+    }
+
+    .qr-dialog p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .qr-large {
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
     .endgame-dialog {
       position: relative;
       width: min(430px, 100%);
@@ -716,6 +773,53 @@
       color: var(--text);
       font-size: 13px;
       word-break: break-all;
+    }
+
+    .qr-card {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      transition: transform var(--motion), border-color var(--motion), background var(--motion);
+    }
+
+    .qr-card:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 211, 106, 0.42);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .qr-thumb,
+    .qr-large {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .qr-copy {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .qr-copy strong {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .qr-copy span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }
 
     .lobby-card {
@@ -1170,6 +1274,13 @@
             <button class="restart-btn" id="createRoomBtn" type="button">Create match</button>
             <button class="restart-btn" id="copyLinkBtn" type="button" disabled>Copy link</button>
             <div class="room-code" id="roomCodeText">No room yet</div>
+            <button class="qr-card hidden" id="qrCardBtn" type="button" aria-label="Open match QR code">
+              <img class="qr-thumb" id="qrImage" alt="" aria-hidden="true">
+              <span class="qr-copy">
+                <strong>Scan to join</strong>
+                <span>Open a bigger QR code for another phone.</span>
+              </span>
+            </button>
             <div class="lobby-card" id="lobbyCard">
               <div class="lobby-row">
                 <span class="lobby-side"><span class="chip-dot"></span>Blue Player</span>
@@ -1274,6 +1385,15 @@
     </div>
   </div>
 
+  <div class="qr-overlay" id="qrOverlay" aria-hidden="true">
+    <div class="qr-dialog" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+      <h2 id="qrTitle">Scan to join</h2>
+      <img class="qr-large" id="qrLargeImage" alt="QR code for this match link">
+      <p id="qrShareText">Open this room link from another phone.</p>
+      <button class="restart-btn" id="qrCloseBtn" type="button">Close</button>
+    </div>
+  </div>
+
   <script type="module">
     import { nextLocalScore, selectBotMessage } from "./src/companion.js";
 
@@ -1335,6 +1455,12 @@
     const createRoomBtn = document.getElementById("createRoomBtn");
     const copyLinkBtn = document.getElementById("copyLinkBtn");
     const roomCodeTextEl = document.getElementById("roomCodeText");
+    const qrCardBtn = document.getElementById("qrCardBtn");
+    const qrImageEl = document.getElementById("qrImage");
+    const qrOverlayEl = document.getElementById("qrOverlay");
+    const qrLargeImageEl = document.getElementById("qrLargeImage");
+    const qrShareTextEl = document.getElementById("qrShareText");
+    const qrCloseBtn = document.getElementById("qrCloseBtn");
     const blueStatusEl = document.getElementById("blueStatus");
     const redStatusEl = document.getElementById("redStatus");
     const onlineStatusEl = document.getElementById("onlineStatus");
@@ -1628,6 +1754,7 @@
       copyLinkBtn.disabled = !roomCode;
       restartBtn.disabled = gameMode === "online" && localSide === SPECTATOR;
       renderLobbyStatus();
+      renderQrCard();
 
       modeGridEl.querySelectorAll(".difficulty-btn").forEach((button) => {
         button.classList.toggle("active", button.dataset.mode === gameMode);
@@ -1703,6 +1830,23 @@
       roomCodeTextEl.textContent = roomCode
         ? `Room ${roomCode}${spectatorCount ? ` · ${spectatorCount} watching` : ""}`
         : "No room yet";
+    }
+
+    function renderQrCard() {
+      const visible = gameMode === "online" && Boolean(roomCode);
+      qrCardBtn.classList.toggle("hidden", !visible);
+      if (!visible) {
+        qrImageEl.removeAttribute("src");
+        qrLargeImageEl.removeAttribute("src");
+        closeQrOverlay();
+        return;
+      }
+
+      const shareUrl = roomUrl(roomCode);
+      const imageUrl = qrImageUrl(shareUrl);
+      qrImageEl.src = imageUrl;
+      qrLargeImageEl.src = imageUrl;
+      qrShareTextEl.textContent = shareUrl;
     }
 
     function updateSideStatus(element, side) {
@@ -1908,6 +2052,21 @@
         onlineStatus = url;
       }
       render();
+    });
+
+    qrCardBtn.addEventListener("click", () => {
+      if (!roomCode) return;
+      openQrOverlay();
+    });
+
+    qrCloseBtn.addEventListener("click", closeQrOverlay);
+
+    qrOverlayEl.addEventListener("click", (event) => {
+      if (event.target === qrOverlayEl) closeQrOverlay();
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeQrOverlay();
     });
 
     window.addEventListener("resize", () => {
@@ -2354,6 +2513,21 @@
 
     function roomUrl(code) {
       return `${location.origin}${location.pathname}?room=${code}`;
+    }
+
+    function qrImageUrl(shareUrl) {
+      return `${location.origin}/qr.svg?url=${encodeURIComponent(shareUrl)}`;
+    }
+
+    function openQrOverlay() {
+      qrOverlayEl.classList.add("open");
+      qrOverlayEl.setAttribute("aria-hidden", "false");
+      qrCloseBtn.focus();
+    }
+
+    function closeQrOverlay() {
+      qrOverlayEl.classList.remove("open");
+      qrOverlayEl.setAttribute("aria-hidden", "true");
     }
 
     function playerReadyFeedback() {

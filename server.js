@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
 import { BOT, PLAYER, applyAction, createInitialState, serializeState } from "./src/game.js";
+import { generateShareQrSvg } from "./src/qr.js";
 
 const SPECTATOR = "spectator";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -258,6 +259,11 @@ function cleanupRooms(rooms, cleanupMs) {
 
 async function serveStatic(request, response) {
   const url = new URL(request.url, "http://localhost");
+  if (url.pathname === "/qr.svg") {
+    await serveQrSvg(url, response);
+    return;
+  }
+
   const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
   const normalized = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, "");
   const filePath = join(PUBLIC_ROOT, normalized);
@@ -270,6 +276,22 @@ async function serveStatic(request, response) {
 
   response.writeHead(200, { "content-type": MIME_TYPES[extname(filePath)] || "application/octet-stream" });
   createReadStream(filePath).pipe(response);
+}
+
+async function serveQrSvg(url, response) {
+  const shareUrl = url.searchParams.get("url");
+  if (!shareUrl) {
+    response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+    response.end("Missing QR URL.");
+    return;
+  }
+
+  const svg = await generateShareQrSvg(shareUrl);
+  response.writeHead(200, {
+    "content-type": "image/svg+xml; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  response.end(svg);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

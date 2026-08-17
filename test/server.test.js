@@ -28,6 +28,42 @@ async function openSocket(url, t) {
   return socket;
 }
 
+test("serves a QR SVG for a share link", async () => {
+  const app = createServer({ cleanupMs: 10_000 });
+  await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
+
+  const { port } = app.httpServer.address();
+
+  try {
+    const shareUrl = `http://127.0.0.1:${port}/?room=ABCD12`;
+    const response = await fetch(`http://127.0.0.1:${port}/qr.svg?url=${encodeURIComponent(shareUrl)}`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+    assert.match(body, /<svg[^>]*>/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("rejects QR requests without a share URL", async () => {
+  const app = createServer({ cleanupMs: 10_000 });
+  await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
+
+  const { port } = app.httpServer.address();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/qr.svg`);
+    const body = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.equal(body, "Missing QR URL.");
+  } finally {
+    await app.close();
+  }
+});
+
 test("creates a room, joins it, and broadcasts a move", async () => {
   const app = createServer({ cleanupMs: 10_000 });
   await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
