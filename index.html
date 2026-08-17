@@ -1070,7 +1070,7 @@
       easy: {
         label: "Easy",
         help: "Easy bot makes more casual moves and rarely blocks.",
-        thinkingMs: 420,
+        thinkingMs: 180,
         randomMoveChance: 0.42,
         wallChance: 0.14,
         wallScoreThreshold: 2.2,
@@ -1083,7 +1083,7 @@
       normal: {
         label: "Normal",
         help: "Normal bot balances racing and blocking.",
-        thinkingMs: 620,
+        thinkingMs: 260,
         randomMoveChance: 0.12,
         wallChance: 0.34,
         wallScoreThreshold: 1.2,
@@ -1096,7 +1096,7 @@
       hard: {
         label: "Hard",
         help: "Hard bot races efficiently and looks harder for useful walls.",
-        thinkingMs: 760,
+        thinkingMs: 360,
         randomMoveChance: 0.02,
         wallChance: 0.58,
         wallScoreThreshold: 0.65,
@@ -1104,7 +1104,7 @@
         selfPenalty: 0.75,
         moveNoise: 0.04,
         wallNoise: 0.06,
-        randomCandidates: 18
+        randomCandidates: 12
       }
     };
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1143,6 +1143,8 @@
     let onlinePresence = { [PLAYER]: false, [BOT]: false };
     let onlineStatus = "Create a match, then send the link to your opponent.";
     let lastRenderedWinner = null;
+    let boardMetricsCache = null;
+    const wallLegalityCache = new Map();
 
     function createInitialState(botDifficulty = "normal") {
       return {
@@ -1184,6 +1186,7 @@
     }
 
     function render() {
+      boardMetricsCache = null;
       const legalMoves = !isPlayerInputLocked() ? getLegalMoves(getLocalActor()) : [];
       const legalMoveKeys = new Set(legalMoves.map((move) => key(move.r, move.c)));
       boardEl.className = [
@@ -1544,6 +1547,10 @@
       render();
     });
 
+    window.addEventListener("resize", () => {
+      boardMetricsCache = null;
+    });
+
     difficultyGridEl.addEventListener("click", (event) => {
       const button = event.target.closest(".difficulty-btn");
       if (!button || isPlayerInputLocked()) return;
@@ -1595,17 +1602,16 @@
     }
 
     function setHoverWall(wall) {
-      const legal = isWallLegal(wall.orientation, wall.r, wall.c);
       if (
         state.hoverWall
         && state.hoverWall.orientation === wall.orientation
         && state.hoverWall.r === wall.r
         && state.hoverWall.c === wall.c
-        && state.hoverWall.legal === legal
       ) {
         return;
       }
 
+      const legal = getCachedWallLegality(wall.orientation, wall.r, wall.c);
       state.hoverWall = { ...wall, legal };
       syncWallPreview();
     }
@@ -1614,6 +1620,33 @@
       if (!state.hoverWall) return;
       state.hoverWall = null;
       syncWallPreview();
+    }
+
+    function getCachedWallLegality(orientation, r, c) {
+      const cacheKey = `${stateVersionKey()}:${orientation}:${r}:${c}`;
+      if (!wallLegalityCache.has(cacheKey)) {
+        wallLegalityCache.set(cacheKey, isWallLegal(orientation, r, c));
+      }
+      return wallLegalityCache.get(cacheKey);
+    }
+
+    function stateVersionKey() {
+      return [
+        state.currentTurn,
+        state.pawns[PLAYER].r,
+        state.pawns[PLAYER].c,
+        state.pawns[PLAYER].walls,
+        state.pawns[BOT].r,
+        state.pawns[BOT].c,
+        state.pawns[BOT].walls,
+        [...state.walls.h].sort().join("."),
+        [...state.walls.v].sort().join(".")
+      ].join("|");
+    }
+
+    function clearInteractionCaches() {
+      wallLegalityCache.clear();
+      boardMetricsCache = null;
     }
 
     function getWallFromPointerEvent(event) {
@@ -1636,6 +1669,8 @@
     }
 
     function getBoardTrackMetrics() {
+      if (boardMetricsCache) return boardMetricsCache;
+
       const rect = boardEl.getBoundingClientRect();
       const styles = getComputedStyle(boardEl);
       const paddingLeft = parseFloat(styles.paddingLeft) || 0;
@@ -1647,7 +1682,7 @@
 
       if (cols.length !== 17 || rows.length !== 17) return null;
 
-      return {
+      boardMetricsCache = {
         cols,
         rows,
         left: rect.left + paddingLeft,
@@ -1655,6 +1690,7 @@
         width: rect.width - paddingLeft - paddingRight,
         height: rect.height - paddingTop - paddingBottom
       };
+      return boardMetricsCache;
     }
 
     function parseTrackList(value) {
@@ -1715,6 +1751,7 @@
         return;
       }
       state = createInitialState(state.botDifficulty);
+      clearInteractionCaches();
       render();
     });
 
@@ -1839,6 +1876,7 @@
           v: new Set(nextState.walls.v)
         }
       };
+      clearInteractionCaches();
     }
 
     function onlineFeedback(nextState) {
@@ -1887,6 +1925,7 @@
       state.lastAction = { type: "move", actor, from, to: { r, c } };
       state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
+      clearInteractionCaches();
       setFeedback("<strong>You moved.</strong> The bot will respond now.", "");
       await renderWithMotion();
 
@@ -2029,6 +2068,7 @@
       state.lastAction = { type: "wall", actor, orientation, r, c };
       state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
+      clearInteractionCaches();
     }
 
     // Pathfinding
@@ -2119,11 +2159,12 @@
         state.pawns[BOT].c = action.to.c;
         state.lastAction = { type: "move", actor: BOT, from, to: action.to };
         state.pendingActionAnimation = state.lastAction;
+        clearInteractionCaches();
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
       }
 
       await renderWithMotion();
-      await sleep(720);
+      await sleep(260);
 
       if (finishIfWon()) return;
 

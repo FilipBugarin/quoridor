@@ -13,7 +13,7 @@ export const BOT_DIFFICULTIES = {
   easy: {
     label: "Easy",
     help: "Easy bot makes more casual moves and rarely blocks.",
-    thinkingMs: 420,
+    thinkingMs: 180,
     randomMoveChance: 0.42,
     wallChance: 0.14,
     wallScoreThreshold: 2.2,
@@ -21,12 +21,12 @@ export const BOT_DIFFICULTIES = {
     selfPenalty: 1.1,
     moveNoise: 1.2,
     wallNoise: 0.55,
-    randomCandidates: 8
+    randomCandidates: 4
   },
   normal: {
     label: "Normal",
     help: "Normal bot balances racing and blocking.",
-    thinkingMs: 620,
+    thinkingMs: 260,
     randomMoveChance: 0.12,
     wallChance: 0.34,
     wallScoreThreshold: 1.2,
@@ -34,12 +34,12 @@ export const BOT_DIFFICULTIES = {
     selfPenalty: 0.9,
     moveNoise: 0.18,
     wallNoise: 0.2,
-    randomCandidates: 14
+    randomCandidates: 8
   },
   hard: {
     label: "Hard",
     help: "Hard bot races efficiently and looks harder for useful walls.",
-    thinkingMs: 760,
+    thinkingMs: 360,
     randomMoveChance: 0.02,
     wallChance: 0.58,
     wallScoreThreshold: 0.65,
@@ -47,7 +47,7 @@ export const BOT_DIFFICULTIES = {
     selfPenalty: 0.75,
     moveNoise: 0.04,
     wallNoise: 0.06,
-    randomCandidates: 18
+    randomCandidates: 12
   }
 };
 
