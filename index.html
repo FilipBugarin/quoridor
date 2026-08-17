@@ -419,14 +419,35 @@
 
     .pawn.player {
       color: var(--player);
+      view-transition-name: blue-pawn;
     }
 
     .pawn.bot {
       color: var(--bot);
+      view-transition-name: red-pawn;
     }
 
     .pawn.recent {
       animation: pawnLand 700ms ease-out;
+    }
+
+    .pawn.winner {
+      animation: winnerPulse 1100ms ease-in-out infinite;
+    }
+
+    ::view-transition-old(blue-pawn),
+    ::view-transition-new(blue-pawn),
+    ::view-transition-old(red-pawn),
+    ::view-transition-new(red-pawn) {
+      height: 100%;
+      width: 100%;
+      animation-duration: 420ms;
+      animation-timing-function: cubic-bezier(.2, .8, .2, 1);
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 0ms;
     }
 
     .thinking .pawn.bot {
@@ -470,6 +491,108 @@
 
     .feedback.win .dot {
       background: var(--green);
+    }
+
+    .endgame-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: rgba(5, 9, 18, 0.54);
+      backdrop-filter: blur(9px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+
+    .endgame-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .endgame-dialog {
+      position: relative;
+      width: min(430px, 100%);
+      overflow: hidden;
+      border: 1px solid rgba(161, 181, 217, 0.22);
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(93, 227, 162, 0.16), transparent 32%),
+        linear-gradient(145deg, rgba(23, 34, 58, 0.96), rgba(10, 16, 31, 0.98));
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.52);
+      padding: 28px;
+      text-align: center;
+      transform: translateY(18px) scale(0.96);
+      transition: transform 260ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .endgame-overlay.open .endgame-dialog {
+      transform: translateY(0) scale(1);
+      animation: dialogPop 420ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .endgame-overlay.defeat .endgame-dialog {
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255, 95, 117, 0.16), transparent 34%),
+        linear-gradient(145deg, rgba(28, 24, 42, 0.96), rgba(10, 16, 31, 0.98));
+    }
+
+    .endgame-kicker {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .endgame-title {
+      margin: 0;
+      font-size: clamp(36px, 8vw, 64px);
+      line-height: 0.9;
+      letter-spacing: 0;
+    }
+
+    .endgame-message {
+      margin: 14px auto 22px;
+      max-width: 32ch;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .endgame-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .endgame-burst {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .endgame-burst i {
+      position: absolute;
+      left: 50%;
+      top: 42%;
+      width: 7px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--yellow);
+      opacity: 0;
+      transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0);
+    }
+
+    .endgame-overlay.open.victory .endgame-burst i {
+      animation: burstOut 900ms ease-out forwards;
+      animation-delay: var(--delay);
+    }
+
+    .endgame-overlay.open.defeat .endgame-dialog {
+      animation: dialogPop 420ms cubic-bezier(.2, .8, .2, 1), defeatFlicker 900ms ease-out;
     }
 
     .side-panel {
@@ -699,6 +822,17 @@
       100% { transform: translateY(0) scale(1); }
     }
 
+    @keyframes winnerPulse {
+      0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+      }
+      50% {
+        transform: scale(1.12);
+        filter: brightness(1.24);
+      }
+    }
+
     @keyframes botPulse {
       0%, 100% { transform: scale(1); filter: brightness(1); }
       50% { transform: scale(1.08); filter: brightness(1.18); }
@@ -708,6 +842,30 @@
       0%, 100% { transform: translateX(0); }
       30% { transform: translateX(-5px); }
       60% { transform: translateX(5px); }
+    }
+
+    @keyframes dialogPop {
+      0% { transform: translateY(18px) scale(0.94); opacity: 0.72; }
+      65% { transform: translateY(-3px) scale(1.015); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    @keyframes burstOut {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0) scale(0.4);
+      }
+      18% { opacity: 1; }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-150px) scale(1);
+      }
+    }
+
+    @keyframes defeatFlicker {
+      0%, 100% { border-color: rgba(161, 181, 217, 0.22); }
+      20%, 48% { border-color: rgba(255, 95, 117, 0.7); }
+      34%, 62% { border-color: rgba(161, 181, 217, 0.22); }
     }
 
     @media (max-width: 930px) {
@@ -784,6 +942,10 @@
       *::after {
         animation-duration: 1ms !important;
         transition-duration: 1ms !important;
+      }
+
+      .endgame-burst {
+        display: none;
       }
     }
   </style>
@@ -887,6 +1049,18 @@
     </main>
   </div>
 
+  <div class="endgame-overlay" id="endgameOverlay" aria-hidden="true">
+    <div class="endgame-dialog" role="dialog" aria-modal="true" aria-labelledby="endgameTitle">
+      <div class="endgame-burst" id="endgameBurst" aria-hidden="true"></div>
+      <p class="endgame-kicker" id="endgameKicker">Match complete</p>
+      <h2 class="endgame-title" id="endgameTitle">Victory</h2>
+      <p class="endgame-message" id="endgameMessage">You reached the far side first.</p>
+      <div class="endgame-actions">
+        <button class="restart-btn" id="playAgainBtn" type="button">Play again</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const SIZE = 9;
     const MAX_WALLS = 10;
@@ -954,6 +1128,12 @@
     const botWallsEl = document.getElementById("botWalls");
     const winnerTextEl = document.getElementById("winnerText");
     const restartBtn = document.getElementById("restartBtn");
+    const playAgainBtn = document.getElementById("playAgainBtn");
+    const endgameOverlayEl = document.getElementById("endgameOverlay");
+    const endgameKickerEl = document.getElementById("endgameKicker");
+    const endgameTitleEl = document.getElementById("endgameTitle");
+    const endgameMessageEl = document.getElementById("endgameMessage");
+    const endgameBurstEl = document.getElementById("endgameBurst");
 
     let state = createInitialState();
     let gameMode = "bot";
@@ -962,6 +1142,7 @@
     let localSide = PLAYER;
     let onlinePresence = { [PLAYER]: false, [BOT]: false };
     let onlineStatus = "Create a match, then send the link to your opponent.";
+    let lastRenderedWinner = null;
 
     function createInitialState(botDifficulty = "normal") {
       return {
@@ -1045,6 +1226,9 @@
             pawn.className = `pawn ${pawnOwner}`;
             if (state.lastAction?.type === "move" && state.lastAction.actor === pawnOwner) {
               pawn.classList.add("recent");
+            }
+            if (state.gameOver && state.winner === pawnOwner) {
+              pawn.classList.add("winner");
             }
             tile.appendChild(pawn);
           }
@@ -1208,6 +1392,8 @@
       } else {
         contextHelpEl.textContent = "Click a blue tile to move, or click a gap between tiles to place a wall.";
       }
+
+      renderEndgameOverlay();
     }
 
     function getPhaseLabel() {
@@ -1250,6 +1436,61 @@
     function setFeedback(message, tone = "") {
       state.feedback = message;
       state.feedbackTone = tone;
+    }
+
+    function renderWithMotion() {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (prefersReducedMotion || typeof document.startViewTransition !== "function") {
+        render();
+        return;
+      }
+
+      document.startViewTransition(() => {
+        render();
+      });
+    }
+
+    function renderEndgameOverlay() {
+      const open = state.gameOver && state.winner;
+      endgameOverlayEl.classList.toggle("open", Boolean(open));
+      endgameOverlayEl.setAttribute("aria-hidden", open ? "false" : "true");
+
+      if (!open) {
+        endgameOverlayEl.classList.remove("victory", "defeat");
+        lastRenderedWinner = null;
+        return;
+      }
+
+      const didWin = state.winner === getLocalActor();
+      const tone = didWin ? "victory" : "defeat";
+      endgameOverlayEl.classList.toggle("victory", didWin);
+      endgameOverlayEl.classList.toggle("defeat", !didWin);
+      endgameKickerEl.textContent = gameMode === "online" ? `Room ${roomCode || ""}` : "Match complete";
+      endgameTitleEl.textContent = didWin ? "Victory" : "Defeat";
+      endgameMessageEl.textContent = didWin
+        ? `${displayNameFor(state.winner)} reached the far side first.`
+        : `${displayNameFor(state.winner)} reached the far side first.`;
+
+      if (lastRenderedWinner !== state.winner || !endgameBurstEl.children.length) {
+        buildEndgameBurst(tone);
+        lastRenderedWinner = state.winner;
+      }
+    }
+
+    function buildEndgameBurst(tone) {
+      endgameBurstEl.innerHTML = "";
+      const colors = tone === "victory"
+        ? ["var(--yellow)", "var(--green)", "var(--blue-2)", "var(--text)"]
+        : ["var(--red)", "var(--bot)", "var(--soft)"];
+      const count = tone === "victory" ? 22 : 10;
+
+      for (let index = 0; index < count; index++) {
+        const shard = document.createElement("i");
+        shard.style.setProperty("--angle", `${Math.round((360 / count) * index)}deg`);
+        shard.style.setProperty("--delay", `${(index % 5) * 28}ms`);
+        shard.style.background = colors[index % colors.length];
+        endgameBurstEl.appendChild(shard);
+      }
     }
 
     function pawnAt(r, c) {
@@ -1459,6 +1700,10 @@
       render();
     });
 
+    playAgainBtn.addEventListener("click", () => {
+      restartBtn.click();
+    });
+
     function getBotProfile() {
       return BOT_DIFFICULTIES[state.botDifficulty] || BOT_DIFFICULTIES.normal;
     }
@@ -1548,7 +1793,7 @@
         applyOnlineState(message.state);
         history.replaceState(null, "", `?room=${roomCode}`);
         onlineStatus = getOnlineStatus();
-        render();
+        renderWithMotion();
         return;
       }
 
@@ -1621,7 +1866,7 @@
       state.lastAction = { type: "move", actor, from, to: { r, c } };
       state.hoverWall = null;
       setFeedback("<strong>You moved.</strong> The bot will respond now.", "");
-      render();
+      renderWithMotion();
 
       if (finishIfWon()) return;
       await runBotTurn();
@@ -1852,7 +2097,7 @@
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
       }
 
-      render();
+      renderWithMotion();
       await sleep(720);
 
       if (finishIfWon()) return;
