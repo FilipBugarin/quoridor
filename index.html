@@ -1196,6 +1196,7 @@
     const MAX_WALLS = 10;
     const PLAYER = "player";
     const BOT = "bot";
+    const SPECTATOR = "spectator";
     const BOT_DIFFICULTIES = {
       easy: {
         label: "Easy",
@@ -1276,6 +1277,7 @@
     let localSide = PLAYER;
     let onlinePresence = { [PLAYER]: false, [BOT]: false };
     let rematchReady = { [PLAYER]: false, [BOT]: false };
+    let spectatorCount = 0;
     let hasOnlineState = false;
     let onlineStatus = "Create a match, then send the link to your opponent.";
     let lastRenderedWinner = null;
@@ -1321,7 +1323,7 @@
       return state.gameOver
         || state.currentTurn !== getLocalActor()
         || state.phase !== "player-selecting"
-        || (gameMode === "online" && (!roomCode || !onlinePresence[PLAYER] || !onlinePresence[BOT]));
+        || (gameMode === "online" && (localSide === SPECTATOR || !roomCode || !onlinePresence[PLAYER] || !onlinePresence[BOT]));
     }
 
     function render() {
@@ -1524,6 +1526,7 @@
       roomCodeTextEl.textContent = roomCode ? `Room ${roomCode}` : "No room yet";
       onlineStatusEl.textContent = onlineStatus;
       copyLinkBtn.disabled = !roomCode;
+      restartBtn.disabled = gameMode === "online" && localSide === SPECTATOR;
       renderLobbyStatus();
 
       modeGridEl.querySelectorAll(".difficulty-btn").forEach((button) => {
@@ -1537,6 +1540,8 @@
 
       if (state.gameOver) {
         contextHelpEl.textContent = `${displayNameFor(state.winner)} wins. Restart to play another round.`;
+      } else if (gameMode === "online" && localSide === SPECTATOR) {
+        contextHelpEl.textContent = "Spectator mode. Watch the match update live.";
       } else if (state.phase === "bot-thinking") {
         contextHelpEl.textContent = "Bot is thinking. Player input is locked until it finishes.";
       } else if (state.phase === "bot-animating") {
@@ -1554,6 +1559,7 @@
 
     function getPhaseLabel() {
       if (state.gameOver) return `${displayNameFor(state.winner)} wins`;
+      if (gameMode === "online" && localSide === SPECTATOR) return "Spectating";
       if (state.phase === "bot-thinking") return "Bot thinking";
       if (state.phase === "bot-animating") return "Bot move";
       if (gameMode === "online" && state.currentTurn !== localSide) return `${displayNameFor(state.currentTurn)} turn`;
@@ -1565,12 +1571,14 @@
     }
 
     function displayNameFor(actor) {
+      if (actor === SPECTATOR) return "Spectator";
       if (gameMode === "online") return actor === localSide ? `You (${sideColor(actor)})` : `${sideColor(actor)} Player`;
       return actor === PLAYER ? "You" : "Bot";
     }
 
     function labelForSide(actor) {
       if (gameMode !== "online") return actor === PLAYER ? "You" : "Bot";
+      if (localSide === SPECTATOR) return `${sideColor(actor)} Player`;
       return actor === localSide ? `You (${sideColor(actor)})` : `${sideColor(actor)} Player`;
     }
 
@@ -1592,6 +1600,9 @@
     function renderLobbyStatus() {
       updateSideStatus(blueStatusEl, PLAYER);
       updateSideStatus(redStatusEl, BOT);
+      roomCodeTextEl.textContent = roomCode
+        ? `Room ${roomCode}${spectatorCount ? ` · ${spectatorCount} watching` : ""}`
+        : "No room yet";
     }
 
     function updateSideStatus(element, side) {
@@ -1733,7 +1744,7 @@
         ? `${displayNameFor(state.winner)} reached the far side first.`
         : `${displayNameFor(state.winner)} reached the far side first.`;
       playAgainBtn.textContent = getPlayAgainLabel();
-      playAgainBtn.disabled = gameMode === "online" && rematchReady[getLocalActor()];
+      playAgainBtn.disabled = gameMode === "online" && (localSide === SPECTATOR || rematchReady[getLocalActor()]);
 
       if (lastRenderedWinner !== state.winner || !endgameBurstEl.children.length) {
         buildEndgameBurst(tone);
@@ -1759,6 +1770,7 @@
 
     function getPlayAgainLabel() {
       if (gameMode !== "online") return "Play again";
+      if (localSide === SPECTATOR) return "Watching";
       if (rematchReady[getLocalActor()]) return "Waiting for rematch";
       if (rematchReady[opponentSide()]) return "Ready for rematch";
       return "Ready for rematch";
@@ -2045,6 +2057,7 @@
         localSide = PLAYER;
         onlinePresence = { [PLAYER]: false, [BOT]: false };
         rematchReady = { [PLAYER]: false, [BOT]: false };
+        spectatorCount = 0;
         hasOnlineState = false;
         onlineStatus = "Create a match, then send the link to your opponent.";
         state = createInitialState(state.botDifficulty);
@@ -2113,6 +2126,7 @@
         localSide = message.side;
         onlinePresence = message.presence;
         rematchReady = message.rematchReady || { [PLAYER]: false, [BOT]: false };
+        spectatorCount = message.spectators || 0;
         applyOnlineState(message.state);
         if (hasOnlineState && state.gameOver && !wasGameOver) {
           playSound(state.winner === getLocalActor() ? "win" : "defeat");
@@ -2162,7 +2176,8 @@
 
     function getOnlineStatus() {
       if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `Room ${roomCode}: ${waitingForSideText()}`;
-      if (state.gameOver) return getRematchStatus();
+      if (state.gameOver) return localSide === SPECTATOR ? `${displayNameFor(state.winner)} won room ${roomCode}.` : getRematchStatus();
+      if (localSide === SPECTATOR) return `Room ${roomCode}: spectating live${spectatorCount > 1 ? ` with ${spectatorCount - 1} others` : ""}.`;
       return state.currentTurn === localSide ? `Room ${roomCode}: your turn.` : `Room ${roomCode}: ${displayNameFor(state.currentTurn)} turn.`;
     }
 
@@ -2178,7 +2193,7 @@
     }
 
     function onlineErrorText(message) {
-      if (message.code === "room-full") return "This room already has two players. Create a new match to play.";
+      if (message.code === "spectator-locked") return "Spectators can watch this room, but cannot make changes.";
       if (message.code === "room-not-found") return `Room ${roomCode || ""} was not found. Create a new match instead.`;
       return message.message || "Online match error.";
     }

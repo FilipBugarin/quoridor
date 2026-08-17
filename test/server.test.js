@@ -59,7 +59,7 @@ test("creates a room, joins it, and broadcasts a move", async () => {
   }
 });
 
-test("rejects a third player with a clear room-full error", async () => {
+test("joins a full room as a spectator and receives broadcasts", async () => {
   const app = createServer({ cleanupMs: 10_000 });
   await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
 
@@ -76,12 +76,16 @@ test("rejects a third player with a clear room-full error", async () => {
     guest.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
     await waitForMessage(guest, "roomState");
 
-    const rejectedMessage = waitForMessage(third, "error");
     third.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
-    const rejected = await rejectedMessage;
+    const spectator = await waitForMessage(third, "roomState");
+    assert.equal(spectator.side, "spectator");
+    assert.equal(spectator.spectators, 1);
 
-    assert.equal(rejected.code, "room-full");
-    assert.match(rejected.message, /already has two players/i);
+    const spectatorUpdate = waitForMessage(third, "roomState");
+    host.send(JSON.stringify({ type: "action", action: { type: "move", to: { r: 7, c: 4 } } }));
+    const updated = await spectatorUpdate;
+    assert.equal(updated.state.pawns.player.r, 7);
+    assert.equal(updated.state.currentTurn, "bot");
   } finally {
     host.close();
     guest.close();

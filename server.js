@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 
 import { BOT, PLAYER, applyAction, createInitialState, serializeState } from "./src/game.js";
 
+const SPECTATOR = "spectator";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_ROOT = __dirname;
 const DEFAULT_CLEANUP_MS = 5 * 60 * 1000;
@@ -67,6 +68,7 @@ export function createServer({ cleanupMs = DEFAULT_CLEANUP_MS } = {}) {
     close: () => new Promise((resolve) => {
       for (const room of rooms.values()) {
         for (const connection of Object.values(room.players)) connection?.ws.close();
+        for (const connection of room.spectators) connection.ws.close();
       }
       wss.close(() => httpServer.close(resolve));
     })
@@ -89,16 +91,7 @@ function handleMessage(rooms, client, message, cleanupMs) {
       return;
     }
 
-    const side = chooseJoinSide(room);
-    if (!side) {
-      send(client.ws, {
-        type: "error",
-        code: "room-full",
-        message: "This room already has two players. Create a new match to play."
-      });
-      return;
-    }
-
+    const side = chooseJoinSide(room) || SPECTATOR;
     attachClient(room, client, side);
     broadcastRoomState(room);
     return;
@@ -107,6 +100,10 @@ function handleMessage(rooms, client, message, cleanupMs) {
   if (message.type === "action") {
     const room = getClientRoom(rooms, client);
     if (!room) return;
+    if (client.side === SPECTATOR) {
+      send(client.ws, { type: "error", code: "spectator-locked", message: "Spectators can watch, but cannot play." });
+      return;
+    }
 
     const result = applyAction(room.state, client.side, message.action);
     if (!result.ok) send(client.ws, { type: "error", code: "illegal-action", message: result.error });
@@ -117,6 +114,10 @@ function handleMessage(rooms, client, message, cleanupMs) {
   if (message.type === "restart") {
     const room = getClientRoom(rooms, client);
     if (!room) return;
+    if (client.side === SPECTATOR) {
+      send(client.ws, { type: "error", code: "spectator-locked", message: "Spectators can watch, but cannot restart." });
+      return;
+    }
 
     resetRoomState(room);
     broadcastRoomState(room);
@@ -126,6 +127,10 @@ function handleMessage(rooms, client, message, cleanupMs) {
   if (message.type === "requestRematch") {
     const room = getClientRoom(rooms, client);
     if (!room) return;
+    if (client.side === SPECTATOR) {
+      send(client.ws, { type: "error", code: "spectator-locked", message: "Spectators can watch, but cannot request rematch." });
+      return;
+    }
 
     room.rematchReady[client.side] = true;
     if (room.rematchReady[PLAYER] && room.rematchReady[BOT]) resetRoomState(room);
@@ -150,6 +155,7 @@ function createRoom(rooms) {
       [PLAYER]: null,
       [BOT]: null
     },
+    spectators: new Set(),
     rematchReady: {
       [PLAYER]: false,
       [BOT]: false
@@ -163,10 +169,14 @@ function createRoom(rooms) {
 function attachClient(room, client, side) {
   if (client.roomCode) detachClientFromRoom(room, client);
 
-  room.players[side]?.ws.close();
   client.roomCode = room.code;
   client.side = side;
-  room.players[side] = client;
+  if (side === SPECTATOR) {
+    room.spectators.add(client);
+  } else {
+    room.players[side]?.ws.close();
+    room.players[side] = client;
+  }
   room.disconnectedAt = null;
 }
 
@@ -181,6 +191,7 @@ function detachClient(rooms, client, cleanupMs) {
 }
 
 function detachClientFromRoom(room, client) {
+  if (client.side === SPECTATOR) room.spectators.delete(client);
   if (room.players[client.side] === client) room.players[client.side] = null;
   client.roomCode = null;
   client.side = null;
@@ -205,6 +216,9 @@ function broadcastRoomState(room) {
     const client = room.players[side];
     if (client && client.ws.readyState === client.ws.OPEN) sendRoomState(room, client);
   }
+  for (const client of room.spectators) {
+    if (client.ws.readyState === client.ws.OPEN) sendRoomState(room, client);
+  }
 }
 
 function sendRoomState(room, client) {
@@ -217,6 +231,7 @@ function sendRoomState(room, client) {
       [PLAYER]: Boolean(room.players[PLAYER]),
       [BOT]: Boolean(room.players[BOT])
     },
+    spectators: room.spectators.size,
     rematchReady: { ...room.rematchReady }
   });
 }
@@ -236,7 +251,7 @@ function send(ws, payload) {
 function cleanupRooms(rooms, cleanupMs) {
   const now = Date.now();
   for (const [code, room] of rooms) {
-    const empty = !room.players[PLAYER] && !room.players[BOT];
+    const empty = !room.players[PLAYER] && !room.players[BOT] && room.spectators.size === 0;
     if (empty && room.disconnectedAt && now - room.disconnectedAt > cleanupMs) rooms.delete(code);
   }
 }
