@@ -709,6 +709,57 @@
       word-break: break-all;
     }
 
+    .lobby-card {
+      display: grid;
+      gap: 9px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(13, 20, 38, 0.45);
+    }
+
+    .lobby-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .lobby-side {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .status-pill {
+      min-width: 78px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .status-pill.ready,
+    .status-pill.connected {
+      border-color: rgba(93, 227, 162, 0.36);
+      color: var(--green);
+      background: rgba(93, 227, 162, 0.08);
+    }
+
+    .status-pill.waiting {
+      border-color: rgba(255, 211, 106, 0.34);
+      color: var(--yellow);
+      background: rgba(255, 211, 106, 0.08);
+    }
+
     .hidden {
       display: none !important;
     }
@@ -994,6 +1045,16 @@
             <button class="restart-btn" id="createRoomBtn" type="button">Create match</button>
             <button class="restart-btn" id="copyLinkBtn" type="button" disabled>Copy link</button>
             <div class="room-code" id="roomCodeText">No room yet</div>
+            <div class="lobby-card" id="lobbyCard">
+              <div class="lobby-row">
+                <span class="lobby-side"><span class="chip-dot"></span>Blue Player</span>
+                <span class="status-pill" id="blueStatus">Open</span>
+              </div>
+              <div class="lobby-row">
+                <span class="lobby-side"><span class="chip-dot bot"></span>Red Player</span>
+                <span class="status-pill" id="redStatus">Open</span>
+              </div>
+            </div>
             <p class="help-text" id="onlineStatus">Create a match, then send the link to your opponent.</p>
           </div>
         </section>
@@ -1119,6 +1180,8 @@
     const createRoomBtn = document.getElementById("createRoomBtn");
     const copyLinkBtn = document.getElementById("copyLinkBtn");
     const roomCodeTextEl = document.getElementById("roomCodeText");
+    const blueStatusEl = document.getElementById("blueStatus");
+    const redStatusEl = document.getElementById("redStatus");
     const onlineStatusEl = document.getElementById("onlineStatus");
     const difficultyGridEl = document.getElementById("difficultyGrid");
     const difficultyHelpEl = document.getElementById("difficultyHelp");
@@ -1141,6 +1204,7 @@
     let roomCode = null;
     let localSide = PLAYER;
     let onlinePresence = { [PLAYER]: false, [BOT]: false };
+    let rematchReady = { [PLAYER]: false, [BOT]: false };
     let onlineStatus = "Create a match, then send the link to your opponent.";
     let lastRenderedWinner = null;
     let boardMetricsCache = null;
@@ -1383,6 +1447,7 @@
       roomCodeTextEl.textContent = roomCode ? `Room ${roomCode}` : "No room yet";
       onlineStatusEl.textContent = onlineStatus;
       copyLinkBtn.disabled = !roomCode;
+      renderLobbyStatus();
 
       modeGridEl.querySelectorAll(".difficulty-btn").forEach((button) => {
         button.classList.toggle("active", button.dataset.mode === gameMode);
@@ -1447,6 +1512,25 @@
       return missingSide ? `Waiting for ${sideColor(missingSide)} Player to connect.` : "Waiting for both players to connect.";
     }
 
+    function renderLobbyStatus() {
+      updateSideStatus(blueStatusEl, PLAYER);
+      updateSideStatus(redStatusEl, BOT);
+    }
+
+    function updateSideStatus(element, side) {
+      element.className = "status-pill";
+      if (state.gameOver && gameMode === "online" && roomCode) {
+        const ready = Boolean(rematchReady[side]);
+        element.textContent = ready ? "Ready" : "Waiting";
+        element.classList.add(ready ? "ready" : "waiting");
+        return;
+      }
+
+      const connected = Boolean(onlinePresence[side]);
+      element.textContent = connected ? "Connected" : "Open";
+      element.classList.add(connected ? "connected" : "waiting");
+    }
+
     function setFeedback(message, tone = "") {
       state.feedback = message;
       state.feedbackTone = tone;
@@ -1478,6 +1562,8 @@
 
       if (!open) {
         endgameOverlayEl.classList.remove("victory", "defeat");
+        playAgainBtn.textContent = "Play again";
+        playAgainBtn.disabled = false;
         lastRenderedWinner = null;
         return;
       }
@@ -1491,6 +1577,8 @@
       endgameMessageEl.textContent = didWin
         ? `${displayNameFor(state.winner)} reached the far side first.`
         : `${displayNameFor(state.winner)} reached the far side first.`;
+      playAgainBtn.textContent = getPlayAgainLabel();
+      playAgainBtn.disabled = gameMode === "online" && rematchReady[getLocalActor()];
 
       if (lastRenderedWinner !== state.winner || !endgameBurstEl.children.length) {
         buildEndgameBurst(tone);
@@ -1512,6 +1600,13 @@
         shard.style.background = colors[index % colors.length];
         endgameBurstEl.appendChild(shard);
       }
+    }
+
+    function getPlayAgainLabel() {
+      if (gameMode !== "online") return "Play again";
+      if (rematchReady[getLocalActor()]) return "Waiting for rematch";
+      if (rematchReady[opponentSide()]) return "Ready for rematch";
+      return "Ready for rematch";
     }
 
     function pawnAt(r, c) {
@@ -1747,6 +1842,12 @@
 
     restartBtn.addEventListener("click", () => {
       if (gameMode === "online" && roomCode) {
+        if (state.gameOver) {
+          sendSocket({ type: "requestRematch" });
+          onlineStatus = "Ready for rematch. Waiting for the other player.";
+          render();
+          return;
+        }
         sendSocket({ type: "restart" });
         return;
       }
@@ -1780,6 +1881,7 @@
         roomCode = null;
         localSide = PLAYER;
         onlinePresence = { [PLAYER]: false, [BOT]: false };
+        rematchReady = { [PLAYER]: false, [BOT]: false };
         onlineStatus = "Create a match, then send the link to your opponent.";
         state = createInitialState(state.botDifficulty);
       } else {
@@ -1845,6 +1947,7 @@
         roomCode = message.roomCode;
         localSide = message.side;
         onlinePresence = message.presence;
+        rematchReady = message.rematchReady || { [PLAYER]: false, [BOT]: false };
         applyOnlineState(message.state);
         history.replaceState(null, "", `?room=${roomCode}`);
         onlineStatus = getOnlineStatus();
@@ -1888,8 +1991,19 @@
 
     function getOnlineStatus() {
       if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `Room ${roomCode}: ${waitingForSideText()}`;
-      if (state.gameOver) return `${displayNameFor(state.winner)} won room ${roomCode}.`;
+      if (state.gameOver) return getRematchStatus();
       return state.currentTurn === localSide ? `Room ${roomCode}: your turn.` : `Room ${roomCode}: ${displayNameFor(state.currentTurn)} turn.`;
+    }
+
+    function getRematchStatus() {
+      if (rematchReady[PLAYER] && rematchReady[BOT]) return `Room ${roomCode}: starting rematch.`;
+      if (rematchReady[localSide]) return `Room ${roomCode}: you are ready. Waiting for ${displayNameFor(opponentSide())}.`;
+      if (rematchReady[opponentSide()]) return `Room ${roomCode}: ${displayNameFor(opponentSide())} is ready.`;
+      return `${displayNameFor(state.winner)} won room ${roomCode}.`;
+    }
+
+    function opponentSide() {
+      return localSide === PLAYER ? BOT : PLAYER;
     }
 
     function onlineErrorText(message) {

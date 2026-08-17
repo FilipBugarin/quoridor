@@ -118,7 +118,17 @@ function handleMessage(rooms, client, message, cleanupMs) {
     const room = getClientRoom(rooms, client);
     if (!room) return;
 
-    room.state = createInitialState();
+    resetRoomState(room);
+    broadcastRoomState(room);
+    return;
+  }
+
+  if (message.type === "requestRematch") {
+    const room = getClientRoom(rooms, client);
+    if (!room) return;
+
+    room.rematchReady[client.side] = true;
+    if (room.rematchReady[PLAYER] && room.rematchReady[BOT]) resetRoomState(room);
     broadcastRoomState(room);
     return;
   }
@@ -139,6 +149,10 @@ function createRoom(rooms) {
     players: {
       [PLAYER]: null,
       [BOT]: null
+    },
+    rematchReady: {
+      [PLAYER]: false,
+      [BOT]: false
     },
     disconnectedAt: null
   };
@@ -202,8 +216,17 @@ function sendRoomState(room, client) {
     presence: {
       [PLAYER]: Boolean(room.players[PLAYER]),
       [BOT]: Boolean(room.players[BOT])
-    }
+    },
+    rematchReady: { ...room.rematchReady }
   });
+}
+
+function resetRoomState(room) {
+  room.state = createInitialState();
+  room.rematchReady = {
+    [PLAYER]: false,
+    [BOT]: false
+  };
 }
 
 function send(ws, payload) {

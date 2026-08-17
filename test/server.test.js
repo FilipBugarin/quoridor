@@ -89,3 +89,41 @@ test("rejects a third player with a clear room-full error", async () => {
     await app.close();
   }
 });
+
+test("restarts an online game only after both players request rematch", async () => {
+  const app = createServer({ cleanupMs: 10_000 });
+  await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
+
+  const { port } = app.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await openSocket(url);
+  const guest = await openSocket(url);
+
+  try {
+    host.send(JSON.stringify({ type: "createRoom" }));
+    const created = await waitForMessage(host, "roomState");
+
+    guest.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
+    await waitForMessage(guest, "roomState");
+
+    host.send(JSON.stringify({ type: "action", action: { type: "move", to: { r: 7, c: 4 } } }));
+    await waitForMessage(host, "roomState");
+
+    guest.send(JSON.stringify({ type: "requestRematch" }));
+    const oneReady = await waitForMessage(host, "roomState");
+    assert.equal(oneReady.state.pawns.player.r, 7);
+    assert.equal(oneReady.rematchReady.bot, true);
+    assert.equal(oneReady.rematchReady.player, false);
+
+    host.send(JSON.stringify({ type: "requestRematch" }));
+    const restarted = await waitForMessage(host, "roomState");
+    assert.equal(restarted.state.pawns.player.r, 8);
+    assert.equal(restarted.state.currentTurn, "player");
+    assert.equal(restarted.rematchReady.player, false);
+    assert.equal(restarted.rematchReady.bot, false);
+  } finally {
+    host.close();
+    guest.close();
+    await app.close();
+  }
+});
