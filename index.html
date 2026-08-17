@@ -769,6 +769,19 @@
       background: rgba(255, 211, 106, 0.08);
     }
 
+    .bot-companion {
+      display: grid;
+      gap: 8px;
+    }
+
+    .bot-line {
+      margin: 0;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
     .history-list {
       display: grid;
       gap: 8px;
@@ -844,6 +857,55 @@
     .stat-row strong {
       color: var(--text);
       font-size: 15px;
+    }
+
+    .scoreboard {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .score-cell {
+      display: grid;
+      gap: 3px;
+      min-height: 58px;
+      padding: 9px 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(13, 20, 38, 0.42);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .score-cell strong {
+      color: var(--text);
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .score-reset-btn {
+      min-height: 58px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+      transition: transform var(--motion), border-color var(--motion), color var(--motion), background var(--motion);
+    }
+
+    .score-reset-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 211, 106, 0.38);
+      color: var(--text);
+      background: rgba(255, 211, 106, 0.08);
     }
 
     .player-chip {
@@ -1132,8 +1194,20 @@
           <p class="help-text" id="difficultyHelp">Normal bot balances racing and blocking.</p>
         </section>
 
+        <section class="panel-section" id="botCompanionSection">
+          <h2 class="section-title">Bot says</h2>
+          <div class="bot-companion">
+            <p class="bot-line" id="botMessage">Pick a path. I will try to bend it.</p>
+          </div>
+        </section>
+
         <section class="panel-section">
           <h2 class="section-title">Match</h2>
+          <div class="scoreboard" id="scoreboard">
+            <div class="score-cell"><span>You</span><strong id="playerScore">0</strong></div>
+            <div class="score-cell"><span>Bot</span><strong id="botScore">0</strong></div>
+            <button class="score-reset-btn" id="scoreResetBtn" type="button">Reset</button>
+          </div>
           <div class="stats">
             <div class="stat-row">
               <span class="player-chip"><span class="chip-dot"></span><span id="playerLabel">You</span></span>
@@ -1200,7 +1274,9 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { nextLocalScore, selectBotMessage } from "./src/companion.js";
+
     const SIZE = 9;
     const MAX_WALLS = 10;
     const PLAYER = "player";
@@ -1269,6 +1345,12 @@
     const playerWallsEl = document.getElementById("playerWalls");
     const botWallsEl = document.getElementById("botWalls");
     const winnerTextEl = document.getElementById("winnerText");
+    const botCompanionSectionEl = document.getElementById("botCompanionSection");
+    const botMessageEl = document.getElementById("botMessage");
+    const scoreboardEl = document.getElementById("scoreboard");
+    const playerScoreEl = document.getElementById("playerScore");
+    const botScoreEl = document.getElementById("botScore");
+    const scoreResetBtn = document.getElementById("scoreResetBtn");
     const historyListEl = document.getElementById("historyList");
     const soundToggleBtn = document.getElementById("soundToggleBtn");
     const restartBtn = document.getElementById("restartBtn");
@@ -1294,6 +1376,9 @@
     let audioContext = null;
     let soundEnabled = localStorage.getItem("quoridor:sound") !== "off";
     let lastPointerType = "mouse";
+    let localScore = loadLocalScore();
+    let scoreRecordedWinner = null;
+    let botMessage = "Pick a path. I will try to bend it.";
     const wallLegalityCache = new Map();
 
     function createInitialState(botDifficulty = "normal") {
@@ -1532,6 +1617,10 @@
       renderHistory();
       renderSoundToggle();
       difficultyHelpEl.textContent = getBotProfile().help;
+      botCompanionSectionEl.classList.toggle("hidden", gameMode !== "bot");
+      scoreboardEl.classList.toggle("hidden", gameMode !== "bot");
+      renderLocalScore();
+      botMessageEl.textContent = botMessage;
       onlineSectionEl.classList.toggle("hidden", gameMode !== "online");
       difficultySectionEl.classList.toggle("hidden", gameMode !== "bot");
       roomCodeTextEl.textContent = roomCode ? `Room ${roomCode}` : "No room yet";
@@ -1832,6 +1921,12 @@
       renderSoundToggle();
     });
 
+    scoreResetBtn.addEventListener("click", () => {
+      localScore = { [PLAYER]: 0, [BOT]: 0 };
+      saveLocalScore();
+      renderLocalScore();
+    });
+
     difficultyGridEl.addEventListener("click", (event) => {
       const button = event.target.closest(".difficulty-btn");
       if (!button || isPlayerInputLocked()) return;
@@ -2080,6 +2175,8 @@
         return;
       }
       state = createInitialState(state.botDifficulty);
+      scoreRecordedWinner = null;
+      botMessage = "Pick a path. I will try to bend it.";
       clearInteractionCaches();
       render();
     });
@@ -2095,6 +2192,7 @@
     function setBotDifficulty(difficulty) {
       if (!BOT_DIFFICULTIES[difficulty]) return;
       state.botDifficulty = difficulty;
+      botMessage = selectBotMessage("thinking");
       setFeedback(`<strong>${BOT_DIFFICULTIES[difficulty].label} bot selected.</strong> ${BOT_DIFFICULTIES[difficulty].help}`);
       render();
     }
@@ -2114,7 +2212,10 @@
         hasOnlineState = false;
         onlineStatus = "Create a match, then send the link to your opponent.";
         state = createInitialState(state.botDifficulty);
+        scoreRecordedWinner = null;
+        botMessage = "Pick a path. I will try to bend it.";
       } else {
+        scoreRecordedWinner = null;
         ensureSocket();
         onlineStatus = roomCode ? `Joining room ${roomCode}...` : "Create a match, then send the link to your opponent.";
       }
@@ -2507,6 +2608,7 @@
       state.currentTurn = BOT;
       state.phase = "bot-thinking";
       const profile = getBotProfile();
+      botMessage = selectBotMessage("thinking");
       setFeedback(`<strong>${profile.label} bot thinking...</strong> Player input is locked.`, "bot");
       render();
       await sleep(profile.thinkingMs);
@@ -2516,6 +2618,7 @@
 
       if (action.type === "wall") {
         placeWall(action.orientation, action.r, action.c, BOT);
+        botMessage = selectBotMessage("wall");
         setFeedback(`<strong>${profile.label} bot placed a wall.</strong> The new wall is highlighted.`, "bot");
       } else {
         const from = { r: state.pawns[BOT].r, c: state.pawns[BOT].c };
@@ -2525,6 +2628,7 @@
         recordHistory(state.lastAction);
         state.pendingActionAnimation = state.lastAction;
         clearInteractionCaches();
+        botMessage = selectBotMessage("move");
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
       }
 
@@ -2646,6 +2750,8 @@
         state.phase = "game-over";
         state.winner = PLAYER;
         recordWinHistory(PLAYER);
+        recordLocalWin(PLAYER);
+        botMessage = selectBotMessage("lose");
         playSound(gameMode === "online" && getLocalActor() !== PLAYER ? "defeat" : "win");
         setFeedback("<strong>You win.</strong> Restart to play another round.", "win");
         render();
@@ -2657,6 +2763,8 @@
         state.phase = "game-over";
         state.winner = BOT;
         recordWinHistory(BOT);
+        recordLocalWin(BOT);
+        botMessage = selectBotMessage("win");
         playSound(gameMode === "online" && getLocalActor() === BOT ? "win" : "defeat");
         setFeedback("<strong>Bot wins.</strong> Restart to try again.", "warn");
         render();
@@ -2669,6 +2777,30 @@
     function recordWinHistory(actor) {
       if (state.history?.[0]?.type === "win" && state.history[0].actor === actor) return;
       recordHistory({ type: "win", actor });
+    }
+
+    function recordLocalWin(actor) {
+      if (gameMode !== "bot" || scoreRecordedWinner === actor) return;
+      localScore = nextLocalScore(localScore, actor);
+      scoreRecordedWinner = actor;
+      saveLocalScore();
+    }
+
+    function renderLocalScore() {
+      playerScoreEl.textContent = String(localScore[PLAYER] || 0);
+      botScoreEl.textContent = String(localScore[BOT] || 0);
+    }
+
+    function loadLocalScore() {
+      try {
+        return nextLocalScore(JSON.parse(localStorage.getItem("quoridor:localScore") || "{}"));
+      } catch {
+        return { [PLAYER]: 0, [BOT]: 0 };
+      }
+    }
+
+    function saveLocalScore() {
+      localStorage.setItem("quoridor:localScore", JSON.stringify(localScore));
     }
 
     const startupRoom = new URLSearchParams(location.search).get("room");
