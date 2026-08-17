@@ -1154,6 +1154,7 @@
         feedbackTone: "",
         feedback: "<strong>Your turn.</strong> Click a blue tile to move, or click between tiles to place a wall.",
         hoverWall: null,
+        pendingActionAnimation: null,
         lastAction: null,
         pawns: {
           [PLAYER]: { r: 8, c: 4, walls: MAX_WALLS },
@@ -1224,7 +1225,7 @@
           if (pawnOwner) {
             const pawn = document.createElement("div");
             pawn.className = `pawn ${pawnOwner}`;
-            if (state.lastAction?.type === "move" && state.lastAction.actor === pawnOwner) {
+            if (isPendingMoveAnimation(pawnOwner)) {
               pawn.classList.add("recent");
             }
             if (state.gameOver && state.winner === pawnOwner) {
@@ -1347,10 +1348,15 @@
     }
 
     function isRecentWall(orientation, r, c) {
-      return state.lastAction?.type === "wall"
-        && state.lastAction.orientation === orientation
-        && state.lastAction.r === r
-        && state.lastAction.c === c;
+      return state.pendingActionAnimation?.type === "wall"
+        && state.pendingActionAnimation.orientation === orientation
+        && state.pendingActionAnimation.r === r
+        && state.pendingActionAnimation.c === c;
+    }
+
+    function isPendingMoveAnimation(actor) {
+      return state.pendingActionAnimation?.type === "move"
+        && state.pendingActionAnimation.actor === actor;
     }
 
     function renderHud() {
@@ -1438,16 +1444,23 @@
       state.feedbackTone = tone;
     }
 
-    function renderWithMotion() {
+    async function renderWithMotion() {
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (prefersReducedMotion || typeof document.startViewTransition !== "function") {
         render();
+        consumePendingActionAnimation();
         return;
       }
 
-      document.startViewTransition(() => {
+      const transition = document.startViewTransition(() => {
         render();
       });
+      await transition.finished.catch(() => {});
+      consumePendingActionAnimation();
+    }
+
+    function consumePendingActionAnimation() {
+      state.pendingActionAnimation = null;
     }
 
     function renderEndgameOverlay() {
@@ -1806,6 +1819,8 @@
 
     function applyOnlineState(nextState) {
       const botDifficulty = state.botDifficulty;
+      const previousAction = state.lastAction ? JSON.stringify(state.lastAction) : "";
+      const nextAction = nextState.lastAction ? JSON.stringify(nextState.lastAction) : "";
       state = {
         ...nextState,
         botDifficulty,
@@ -1813,6 +1828,7 @@
         feedbackTone: nextState.gameOver ? (nextState.winner === localSide ? "win" : "warn") : "",
         feedback: onlineFeedback(nextState),
         hoverWall: null,
+        pendingActionAnimation: nextAction && nextAction !== previousAction ? nextState.lastAction : null,
         walls: {
           h: new Set(nextState.walls.h),
           v: new Set(nextState.walls.v)
@@ -1864,9 +1880,10 @@
       state.pawns[actor].r = r;
       state.pawns[actor].c = c;
       state.lastAction = { type: "move", actor, from, to: { r, c } };
+      state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
       setFeedback("<strong>You moved.</strong> The bot will respond now.", "");
-      renderWithMotion();
+      await renderWithMotion();
 
       if (finishIfWon()) return;
       await runBotTurn();
@@ -1893,6 +1910,7 @@
       placeWall(orientation, r, c, actor);
       setFeedback("<strong>You placed a wall.</strong> The bot will respond now.", "");
       render();
+      consumePendingActionAnimation();
       await runBotTurn();
     }
 
@@ -2004,6 +2022,7 @@
       state.walls[orientation].add(key(r, c));
       state.pawns[actor].walls -= 1;
       state.lastAction = { type: "wall", actor, orientation, r, c };
+      state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
     }
 
@@ -2094,10 +2113,11 @@
         state.pawns[BOT].r = action.to.r;
         state.pawns[BOT].c = action.to.c;
         state.lastAction = { type: "move", actor: BOT, from, to: action.to };
+        state.pendingActionAnimation = state.lastAction;
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
       }
 
-      renderWithMotion();
+      await renderWithMotion();
       await sleep(720);
 
       if (finishIfWon()) return;
