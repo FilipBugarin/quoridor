@@ -91,7 +91,11 @@ function handleMessage(rooms, client, message, cleanupMs) {
 
     const side = chooseJoinSide(room);
     if (!side) {
-      send(client.ws, { type: "error", code: "room-full", message: "Room is full." });
+      send(client.ws, {
+        type: "error",
+        code: "room-full",
+        message: "This room already has two players. Create a new match to play."
+      });
       return;
     }
 

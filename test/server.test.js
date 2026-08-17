@@ -5,10 +5,15 @@ import WebSocket from "ws";
 import { createServer } from "../server.js";
 
 function waitForMessage(socket, type) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("message", onMessage);
+      reject(new Error(`Timed out waiting for ${type}`));
+    }, 1000);
     const onMessage = (raw) => {
       const message = JSON.parse(raw.toString());
       if (message.type === type) {
+        clearTimeout(timeout);
         socket.off("message", onMessage);
         resolve(message);
       }
@@ -17,35 +22,70 @@ function waitForMessage(socket, type) {
   });
 }
 
-test("creates a room, joins it, and broadcasts a move", async (t) => {
+async function openSocket(url, t) {
+  const socket = new WebSocket(url);
+  await new Promise((resolve) => socket.once("open", resolve));
+  return socket;
+}
+
+test("creates a room, joins it, and broadcasts a move", async () => {
   const app = createServer({ cleanupMs: 10_000 });
   await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
-  t.after(() => app.close());
 
   const { port } = app.httpServer.address();
   const url = `ws://127.0.0.1:${port}/ws`;
-  const host = new WebSocket(url);
-  const guest = new WebSocket(url);
-  t.after(() => host.close());
-  t.after(() => guest.close());
+  const host = await openSocket(url);
+  const guest = await openSocket(url);
 
-  await Promise.all([
-    new Promise((resolve) => host.once("open", resolve)),
-    new Promise((resolve) => guest.once("open", resolve))
-  ]);
+  try {
+    host.send(JSON.stringify({ type: "createRoom" }));
+    const created = await waitForMessage(host, "roomState");
+    assert.equal(created.side, "player");
 
-  host.send(JSON.stringify({ type: "createRoom" }));
-  const created = await waitForMessage(host, "roomState");
-  assert.equal(created.side, "player");
+    guest.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
+    const joined = await waitForMessage(guest, "roomState");
+    assert.equal(joined.side, "bot");
 
-  guest.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
-  const joined = await waitForMessage(guest, "roomState");
-  assert.equal(joined.side, "bot");
+    const hostUpdate = waitForMessage(host, "roomState");
+    host.send(JSON.stringify({ type: "action", action: { type: "move", to: { r: 7, c: 4 } } }));
+    const updated = await hostUpdate;
 
-  const hostUpdate = waitForMessage(host, "roomState");
-  host.send(JSON.stringify({ type: "action", action: { type: "move", to: { r: 7, c: 4 } } }));
-  const updated = await hostUpdate;
+    assert.equal(updated.state.pawns.player.r, 7);
+    assert.equal(updated.state.currentTurn, "bot");
+  } finally {
+    host.close();
+    guest.close();
+    await app.close();
+  }
+});
 
-  assert.equal(updated.state.pawns.player.r, 7);
-  assert.equal(updated.state.currentTurn, "bot");
+test("rejects a third player with a clear room-full error", async () => {
+  const app = createServer({ cleanupMs: 10_000 });
+  await new Promise((resolve) => app.httpServer.listen(0, "127.0.0.1", resolve));
+
+  const { port } = app.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await openSocket(url);
+  const guest = await openSocket(url);
+  const third = await openSocket(url);
+
+  try {
+    host.send(JSON.stringify({ type: "createRoom" }));
+    const created = await waitForMessage(host, "roomState");
+
+    guest.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
+    await waitForMessage(guest, "roomState");
+
+    const rejectedMessage = waitForMessage(third, "error");
+    third.send(JSON.stringify({ type: "joinRoom", roomCode: created.roomCode }));
+    const rejected = await rejectedMessage;
+
+    assert.equal(rejected.code, "room-full");
+    assert.match(rejected.message, /already has two players/i);
+  } finally {
+    host.close();
+    guest.close();
+    third.close();
+    await app.close();
+  }
 });

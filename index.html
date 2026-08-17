@@ -850,11 +850,11 @@
           <h2 class="section-title">Match</h2>
           <div class="stats">
             <div class="stat-row">
-              <span class="player-chip"><span class="chip-dot"></span>You</span>
+              <span class="player-chip"><span class="chip-dot"></span><span id="playerLabel">You</span></span>
               <strong id="playerWalls">10 walls</strong>
             </div>
             <div class="stat-row">
-              <span class="player-chip"><span class="chip-dot bot"></span>Bot</span>
+              <span class="player-chip"><span class="chip-dot bot"></span><span id="botLabel">Bot</span></span>
               <strong id="botWalls">10 walls</strong>
             </div>
             <div class="stat-row">
@@ -948,6 +948,8 @@
     const onlineStatusEl = document.getElementById("onlineStatus");
     const difficultyGridEl = document.getElementById("difficultyGrid");
     const difficultyHelpEl = document.getElementById("difficultyHelp");
+    const playerLabelEl = document.getElementById("playerLabel");
+    const botLabelEl = document.getElementById("botLabel");
     const playerWallsEl = document.getElementById("playerWalls");
     const botWallsEl = document.getElementById("botWalls");
     const winnerTextEl = document.getElementById("winnerText");
@@ -1172,6 +1174,8 @@
       turnBadgeEl.innerHTML = `<span>Current state</span><strong>${phaseLabel}</strong>`;
       feedbackEl.className = `feedback ${state.feedbackTone || ""}`;
       feedbackEl.innerHTML = `<span class="dot"></span><span>${state.feedback}</span>`;
+      playerLabelEl.textContent = labelForSide(PLAYER);
+      botLabelEl.textContent = labelForSide(BOT);
       playerWallsEl.textContent = `${state.pawns[PLAYER].walls} walls`;
       botWallsEl.textContent = `${state.pawns[BOT].walls} walls`;
       winnerTextEl.textContent = state.winner ? displayNameFor(state.winner) : "None";
@@ -1198,9 +1202,9 @@
       } else if (state.phase === "bot-animating") {
         contextHelpEl.textContent = "Bot action is resolving. Watch the highlighted tile or wall.";
       } else if (gameMode === "online" && (!onlinePresence[PLAYER] || !onlinePresence[BOT])) {
-        contextHelpEl.textContent = "Waiting for both players to connect.";
+        contextHelpEl.textContent = waitingForSideText();
       } else if (gameMode === "online" && state.currentTurn !== localSide) {
-        contextHelpEl.textContent = "Opponent turn. Watch for their move or wall.";
+        contextHelpEl.textContent = `${displayNameFor(state.currentTurn)} turn. Watch for their move or wall.`;
       } else {
         contextHelpEl.textContent = "Click a blue tile to move, or click a gap between tiles to place a wall.";
       }
@@ -1210,7 +1214,7 @@
       if (state.gameOver) return `${displayNameFor(state.winner)} wins`;
       if (state.phase === "bot-thinking") return "Bot thinking";
       if (state.phase === "bot-animating") return "Bot move";
-      if (gameMode === "online" && state.currentTurn !== localSide) return "Opponent turn";
+      if (gameMode === "online" && state.currentTurn !== localSide) return `${displayNameFor(state.currentTurn)} turn`;
       return "Player turn";
     }
 
@@ -1219,8 +1223,28 @@
     }
 
     function displayNameFor(actor) {
-      if (gameMode === "online") return actor === localSide ? "You" : "Opponent";
+      if (gameMode === "online") return actor === localSide ? `You (${sideColor(actor)})` : `${sideColor(actor)} Player`;
       return actor === PLAYER ? "You" : "Bot";
+    }
+
+    function labelForSide(actor) {
+      if (gameMode !== "online") return actor === PLAYER ? "You" : "Bot";
+      return actor === localSide ? `You (${sideColor(actor)})` : `${sideColor(actor)} Player`;
+    }
+
+    function sideColor(actor) {
+      return actor === PLAYER ? "Blue" : "Red";
+    }
+
+    function missingOpponentSide() {
+      if (!onlinePresence[PLAYER]) return PLAYER;
+      if (!onlinePresence[BOT]) return BOT;
+      return null;
+    }
+
+    function waitingForSideText() {
+      const missingSide = missingOpponentSide();
+      return missingSide ? `Waiting for ${sideColor(missingSide)} Player to connect.` : "Waiting for both players to connect.";
     }
 
     function setFeedback(message, tone = "") {
@@ -1245,7 +1269,7 @@
       setGameMode("online");
       ensureSocket();
       sendSocket({ type: "createRoom" });
-      onlineStatus = "Creating match...";
+      onlineStatus = "Creating match room...";
       render();
     });
 
@@ -1460,7 +1484,7 @@
         state = createInitialState(state.botDifficulty);
       } else {
         ensureSocket();
-        onlineStatus = roomCode ? "Connected to online match." : "Create a match, then send the link to your opponent.";
+        onlineStatus = roomCode ? `Joining room ${roomCode}...` : "Create a match, then send the link to your opponent.";
       }
 
       render();
@@ -1471,10 +1495,10 @@
 
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${location.host}/ws`);
-      onlineStatus = "Connecting...";
+      onlineStatus = roomCode ? `Connecting to room ${roomCode}...` : "Connecting to online match service...";
 
       socket.addEventListener("open", () => {
-        onlineStatus = roomCode ? "Reconnected. Joining room..." : "Connected. Create a match or open a room link.";
+        onlineStatus = roomCode ? `Connected. Joining room ${roomCode}...` : "Connected. Create a match or open a room link.";
         if (roomCode) sendSocket({ type: "joinRoom", roomCode });
         render();
       });
@@ -1486,7 +1510,7 @@
 
       socket.addEventListener("close", () => {
         if (gameMode !== "online") return;
-        onlineStatus = "Disconnected. Reconnecting...";
+        onlineStatus = roomCode ? `Lost connection to room ${roomCode}. Reconnecting...` : "Lost connection. Reconnecting...";
         render();
         setTimeout(() => {
           if (gameMode === "online") ensureSocket();
@@ -1494,7 +1518,7 @@
       });
 
       socket.addEventListener("error", () => {
-        onlineStatus = "Connection error. Retrying...";
+        onlineStatus = roomCode ? `Could not reach room ${roomCode}. Retrying...` : "Connection error. Retrying...";
         render();
       });
     }
@@ -1529,7 +1553,7 @@
       }
 
       if (message.type === "error") {
-        onlineStatus = message.message || "Online match error.";
+        onlineStatus = onlineErrorText(message);
         setFeedback(`<strong>${onlineStatus}</strong>`, "warn");
         render();
       }
@@ -1553,15 +1577,21 @@
 
     function onlineFeedback(nextState) {
       if (nextState.gameOver) return `<strong>${displayNameFor(nextState.winner)} wins.</strong> Restart to play another round.`;
-      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return "<strong>Waiting for opponent.</strong> Send the room link to start.";
+      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `<strong>${waitingForSideText()}</strong> Send the room link to start.`;
       if (nextState.currentTurn === localSide) return "<strong>Your turn.</strong> Move or place a wall.";
-      return "<strong>Opponent turn.</strong> Waiting for their action.";
+      return `<strong>${displayNameFor(nextState.currentTurn)} turn.</strong> Waiting for their action.`;
     }
 
     function getOnlineStatus() {
-      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `Room ${roomCode}: waiting for opponent.`;
+      if (!onlinePresence[PLAYER] || !onlinePresence[BOT]) return `Room ${roomCode}: ${waitingForSideText()}`;
       if (state.gameOver) return `${displayNameFor(state.winner)} won room ${roomCode}.`;
-      return state.currentTurn === localSide ? `Room ${roomCode}: your turn.` : `Room ${roomCode}: opponent turn.`;
+      return state.currentTurn === localSide ? `Room ${roomCode}: your turn.` : `Room ${roomCode}: ${displayNameFor(state.currentTurn)} turn.`;
+    }
+
+    function onlineErrorText(message) {
+      if (message.code === "room-full") return "This room already has two players. Create a new match to play.";
+      if (message.code === "room-not-found") return `Room ${roomCode || ""} was not found. Create a new match instead.`;
+      return message.message || "Online match error.";
     }
 
     function roomUrl(code) {
