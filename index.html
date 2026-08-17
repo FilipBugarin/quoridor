@@ -760,6 +760,33 @@
       background: rgba(255, 211, 106, 0.08);
     }
 
+    .history-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .history-item {
+      display: grid;
+      gap: 2px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(13, 20, 38, 0.4);
+    }
+
+    .history-item strong {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .history-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .hidden {
       display: none !important;
     }
@@ -1088,6 +1115,13 @@
         </section>
 
         <section class="panel-section">
+          <h2 class="section-title">Move history</h2>
+          <ol class="history-list" id="historyList">
+            <li class="history-item"><strong>No moves yet</strong><span>First action will appear here.</span></li>
+          </ol>
+        </section>
+
+        <section class="panel-section">
           <h2 class="section-title">Legend</h2>
           <div class="legend">
             <div class="legend-row">
@@ -1190,6 +1224,7 @@
     const playerWallsEl = document.getElementById("playerWalls");
     const botWallsEl = document.getElementById("botWalls");
     const winnerTextEl = document.getElementById("winnerText");
+    const historyListEl = document.getElementById("historyList");
     const restartBtn = document.getElementById("restartBtn");
     const playAgainBtn = document.getElementById("playAgainBtn");
     const endgameOverlayEl = document.getElementById("endgameOverlay");
@@ -1222,6 +1257,7 @@
         hoverWall: null,
         pendingActionAnimation: null,
         lastAction: null,
+        history: [],
         pawns: {
           [PLAYER]: { r: 8, c: 4, walls: MAX_WALLS },
           [BOT]: { r: 0, c: 4, walls: MAX_WALLS }
@@ -1441,6 +1477,7 @@
       playerWallsEl.textContent = `${state.pawns[PLAYER].walls} walls`;
       botWallsEl.textContent = `${state.pawns[BOT].walls} walls`;
       winnerTextEl.textContent = state.winner ? displayNameFor(state.winner) : "None";
+      renderHistory();
       difficultyHelpEl.textContent = getBotProfile().help;
       onlineSectionEl.classList.toggle("hidden", gameMode !== "online");
       difficultySectionEl.classList.toggle("hidden", gameMode !== "bot");
@@ -1534,6 +1571,38 @@
     function setFeedback(message, tone = "") {
       state.feedback = message;
       state.feedbackTone = tone;
+    }
+
+    function renderHistory() {
+      const entries = (state.history || []).slice(0, 6);
+      if (!entries.length) {
+        historyListEl.innerHTML = `<li class="history-item"><strong>No moves yet</strong><span>First action will appear here.</span></li>`;
+        return;
+      }
+
+      historyListEl.innerHTML = entries.map((entry) => {
+        const actor = displayNameFor(entry.actor);
+        if (entry.type === "move") {
+          return `<li class="history-item"><strong>${actor} moved</strong><span>${cellName(entry.from)} to ${cellName(entry.to)}</span></li>`;
+        }
+        if (entry.type === "wall") {
+          const orientation = entry.orientation === "h" ? "Horizontal" : "Vertical";
+          return `<li class="history-item"><strong>${actor} placed a wall</strong><span>${orientation} at ${cellName({ r: entry.r, c: entry.c })}</span></li>`;
+        }
+        if (entry.type === "win") {
+          return `<li class="history-item"><strong>${actor} won</strong><span>Reached the far side.</span></li>`;
+        }
+        return "";
+      }).join("");
+    }
+
+    function recordHistory(entry) {
+      state.history = [{ ...entry }, ...(state.history || [])].slice(0, 12);
+    }
+
+    function cellName(position) {
+      if (!position) return "";
+      return `${String.fromCharCode(65 + position.c)}${SIZE - position.r}`;
     }
 
     async function renderWithMotion() {
@@ -2037,6 +2106,7 @@
       state.pawns[actor].r = r;
       state.pawns[actor].c = c;
       state.lastAction = { type: "move", actor, from, to: { r, c } };
+      recordHistory(state.lastAction);
       state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
       clearInteractionCaches();
@@ -2180,6 +2250,7 @@
       state.walls[orientation].add(key(r, c));
       state.pawns[actor].walls -= 1;
       state.lastAction = { type: "wall", actor, orientation, r, c };
+      recordHistory(state.lastAction);
       state.pendingActionAnimation = state.lastAction;
       state.hoverWall = null;
       clearInteractionCaches();
@@ -2272,6 +2343,7 @@
         state.pawns[BOT].r = action.to.r;
         state.pawns[BOT].c = action.to.c;
         state.lastAction = { type: "move", actor: BOT, from, to: action.to };
+        recordHistory(state.lastAction);
         state.pendingActionAnimation = state.lastAction;
         clearInteractionCaches();
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
@@ -2393,6 +2465,7 @@
         state.gameOver = true;
         state.phase = "game-over";
         state.winner = PLAYER;
+        recordWinHistory(PLAYER);
         setFeedback("<strong>You win.</strong> Restart to play another round.", "win");
         render();
         return true;
@@ -2402,12 +2475,18 @@
         state.gameOver = true;
         state.phase = "game-over";
         state.winner = BOT;
+        recordWinHistory(BOT);
         setFeedback("<strong>Bot wins.</strong> Restart to try again.", "warn");
         render();
         return true;
       }
 
       return false;
+    }
+
+    function recordWinHistory(actor) {
+      if (state.history?.[0]?.type === "win" && state.history[0].actor === actor) return;
+      recordHistory({ type: "win", actor });
     }
 
     const startupRoom = new URLSearchParams(location.search).get("room");

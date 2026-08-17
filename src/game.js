@@ -1,5 +1,6 @@
 export const SIZE = 9;
 export const MAX_WALLS = 10;
+export const MAX_HISTORY = 12;
 export const PLAYER = "player";
 export const BOT = "bot";
 
@@ -9,6 +10,7 @@ export function createInitialState() {
     gameOver: false,
     winner: null,
     lastAction: null,
+    history: [],
     pawns: {
       [PLAYER]: { r: 8, c: 4, walls: MAX_WALLS },
       [BOT]: { r: 0, c: 4, walls: MAX_WALLS }
@@ -26,6 +28,7 @@ export function serializeState(state) {
     gameOver: state.gameOver,
     winner: state.winner,
     lastAction: state.lastAction ? structuredClone(state.lastAction) : null,
+    history: state.history ? structuredClone(state.history) : [],
     pawns: {
       [PLAYER]: { ...state.pawns[PLAYER] },
       [BOT]: { ...state.pawns[BOT] }
@@ -43,6 +46,7 @@ export function hydrateState(raw) {
     gameOver: raw.gameOver,
     winner: raw.winner,
     lastAction: raw.lastAction ? structuredClone(raw.lastAction) : null,
+    history: raw.history ? structuredClone(raw.history) : [],
     pawns: {
       [PLAYER]: { ...raw.pawns[PLAYER] },
       [BOT]: { ...raw.pawns[BOT] }
@@ -75,6 +79,7 @@ export function applyMove(state, actor, to) {
   state.pawns[actor].r = to.r;
   state.pawns[actor].c = to.c;
   state.lastAction = { type: "move", actor, from, to: { r: to.r, c: to.c } };
+  recordHistory(state, state.lastAction);
   finishIfWon(state);
   advanceTurn(state, actor);
   return { ok: true };
@@ -87,8 +92,18 @@ export function applyWall(state, actor, orientation, r, c) {
   state.walls[orientation].add(key(r, c));
   state.pawns[actor].walls -= 1;
   state.lastAction = { type: "wall", actor, orientation, r, c };
+  recordHistory(state, state.lastAction);
   advanceTurn(state, actor);
   return { ok: true };
+}
+
+function recordHistory(state, action) {
+  state.history = [structuredClone(action), ...(state.history || [])].slice(0, MAX_HISTORY);
+}
+
+function recordWinHistory(state, actor) {
+  if (state.history?.[0]?.type === "win" && state.history[0].actor === actor) return;
+  recordHistory(state, { type: "win", actor });
 }
 
 function advanceTurn(state, actor) {
@@ -100,12 +115,14 @@ export function finishIfWon(state) {
   if (state.pawns[PLAYER].r === goalRowFor(PLAYER)) {
     state.gameOver = true;
     state.winner = PLAYER;
+    recordWinHistory(state, PLAYER);
     return true;
   }
 
   if (state.pawns[BOT].r === goalRowFor(BOT)) {
     state.gameOver = true;
     state.winner = BOT;
+    recordWinHistory(state, BOT);
     return true;
   }
 
