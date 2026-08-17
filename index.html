@@ -787,6 +787,33 @@
       font-size: 12px;
     }
 
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .toggle-btn {
+      min-width: 92px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+      transition: transform var(--motion), border-color var(--motion), background var(--motion);
+    }
+
+    .toggle-btn.active {
+      border-color: rgba(93, 227, 162, 0.42);
+      background: rgba(93, 227, 162, 0.1);
+      color: var(--green);
+    }
+
     .hidden {
       display: none !important;
     }
@@ -1122,6 +1149,14 @@
         </section>
 
         <section class="panel-section">
+          <h2 class="section-title">Sound</h2>
+          <div class="settings-row">
+            <p class="help-text">Subtle game sounds</p>
+            <button class="toggle-btn active" id="soundToggleBtn" type="button" aria-pressed="true">On</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
           <h2 class="section-title">Legend</h2>
           <div class="legend">
             <div class="legend-row">
@@ -1225,6 +1260,7 @@
     const botWallsEl = document.getElementById("botWalls");
     const winnerTextEl = document.getElementById("winnerText");
     const historyListEl = document.getElementById("historyList");
+    const soundToggleBtn = document.getElementById("soundToggleBtn");
     const restartBtn = document.getElementById("restartBtn");
     const playAgainBtn = document.getElementById("playAgainBtn");
     const endgameOverlayEl = document.getElementById("endgameOverlay");
@@ -1240,9 +1276,12 @@
     let localSide = PLAYER;
     let onlinePresence = { [PLAYER]: false, [BOT]: false };
     let rematchReady = { [PLAYER]: false, [BOT]: false };
+    let hasOnlineState = false;
     let onlineStatus = "Create a match, then send the link to your opponent.";
     let lastRenderedWinner = null;
     let boardMetricsCache = null;
+    let audioContext = null;
+    let soundEnabled = localStorage.getItem("quoridor:sound") !== "off";
     const wallLegalityCache = new Map();
 
     function createInitialState(botDifficulty = "normal") {
@@ -1478,6 +1517,7 @@
       botWallsEl.textContent = `${state.pawns[BOT].walls} walls`;
       winnerTextEl.textContent = state.winner ? displayNameFor(state.winner) : "None";
       renderHistory();
+      renderSoundToggle();
       difficultyHelpEl.textContent = getBotProfile().help;
       onlineSectionEl.classList.toggle("hidden", gameMode !== "online");
       difficultySectionEl.classList.toggle("hidden", gameMode !== "bot");
@@ -1605,6 +1645,52 @@
       return `${String.fromCharCode(65 + position.c)}${SIZE - position.r}`;
     }
 
+    function renderSoundToggle() {
+      soundToggleBtn.textContent = soundEnabled ? "On" : "Muted";
+      soundToggleBtn.classList.toggle("active", soundEnabled);
+      soundToggleBtn.setAttribute("aria-pressed", String(soundEnabled));
+    }
+
+    function ensureAudio() {
+      if (!soundEnabled) return null;
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) return null;
+      audioContext ||= new AudioCtor();
+      if (audioContext.state === "suspended") audioContext.resume();
+      return audioContext;
+    }
+
+    function playSound(type) {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const sounds = {
+        move: [{ frequency: 420, duration: 0.055 }, { frequency: 560, duration: 0.07, delay: 0.045 }],
+        wall: [{ frequency: 170, duration: 0.08, type: "triangle" }, { frequency: 115, duration: 0.12, delay: 0.035, type: "triangle" }],
+        illegal: [{ frequency: 160, duration: 0.11, type: "sawtooth" }],
+        win: [{ frequency: 440, duration: 0.08 }, { frequency: 660, duration: 0.1, delay: 0.075 }, { frequency: 880, duration: 0.16, delay: 0.16 }],
+        defeat: [{ frequency: 300, duration: 0.12, type: "triangle" }, { frequency: 210, duration: 0.18, delay: 0.09, type: "triangle" }]
+      };
+
+      for (const tone of sounds[type] || []) {
+        playTone(ctx, now + (tone.delay || 0), tone.frequency, tone.duration, tone.type || "sine");
+      }
+    }
+
+    function playTone(ctx, start, frequency, duration, type) {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.045, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain).connect(ctx.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.025);
+    }
+
     async function renderWithMotion() {
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (prefersReducedMotion || typeof document.startViewTransition !== "function") {
@@ -1693,6 +1779,7 @@
 
     createRoomBtn.addEventListener("click", () => {
       setGameMode("online");
+      hasOnlineState = false;
       ensureSocket();
       sendSocket({ type: "createRoom" });
       onlineStatus = "Creating match room...";
@@ -1713,6 +1800,13 @@
 
     window.addEventListener("resize", () => {
       boardMetricsCache = null;
+    });
+
+    soundToggleBtn.addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      localStorage.setItem("quoridor:sound", soundEnabled ? "on" : "off");
+      if (soundEnabled) playSound("move");
+      renderSoundToggle();
     });
 
     difficultyGridEl.addEventListener("click", (event) => {
@@ -1951,6 +2045,7 @@
         localSide = PLAYER;
         onlinePresence = { [PLAYER]: false, [BOT]: false };
         rematchReady = { [PLAYER]: false, [BOT]: false };
+        hasOnlineState = false;
         onlineStatus = "Create a match, then send the link to your opponent.";
         state = createInitialState(state.botDifficulty);
       } else {
@@ -2013,11 +2108,18 @@
 
     function handleSocketMessage(message) {
       if (message.type === "roomState") {
+        const wasGameOver = state.gameOver;
         roomCode = message.roomCode;
         localSide = message.side;
         onlinePresence = message.presence;
         rematchReady = message.rematchReady || { [PLAYER]: false, [BOT]: false };
         applyOnlineState(message.state);
+        if (hasOnlineState && state.gameOver && !wasGameOver) {
+          playSound(state.winner === getLocalActor() ? "win" : "defeat");
+        } else if (state.pendingActionAnimation) {
+          playActionSound(state.pendingActionAnimation);
+        }
+        hasOnlineState = true;
         history.replaceState(null, "", `?room=${roomCode}`);
         onlineStatus = getOnlineStatus();
         renderWithMotion();
@@ -2042,7 +2144,7 @@
         feedbackTone: nextState.gameOver ? (nextState.winner === localSide ? "win" : "warn") : "",
         feedback: onlineFeedback(nextState),
         hoverWall: null,
-        pendingActionAnimation: nextAction && nextAction !== previousAction ? nextState.lastAction : null,
+        pendingActionAnimation: hasOnlineState && nextAction && nextAction !== previousAction ? nextState.lastAction : null,
         walls: {
           h: new Set(nextState.walls.h),
           v: new Set(nextState.walls.v)
@@ -2111,6 +2213,7 @@
       state.hoverWall = null;
       clearInteractionCaches();
       setFeedback("<strong>You moved.</strong> The bot will respond now.", "");
+      playSound("move");
       await renderWithMotion();
 
       if (finishIfWon()) return;
@@ -2137,6 +2240,7 @@
 
       placeWall(orientation, r, c, actor);
       setFeedback("<strong>You placed a wall.</strong> The bot will respond now.", "");
+      playSound("wall");
       render();
       consumePendingActionAnimation();
       await runBotTurn();
@@ -2144,6 +2248,7 @@
 
     function rejectInput(message) {
       setFeedback(message, "warn");
+      playSound("illegal");
       boardEl.classList.remove("shake");
       void boardEl.offsetWidth;
       boardEl.classList.add("shake");
@@ -2256,6 +2361,12 @@
       clearInteractionCaches();
     }
 
+    function playActionSound(action) {
+      if (action.type === "move") playSound("move");
+      if (action.type === "wall") playSound("wall");
+      if (action.type === "win") playSound(action.actor === getLocalActor() ? "win" : "defeat");
+    }
+
     // Pathfinding
     function hasPathToGoal(actor) {
       return shortestPathFrom(state.pawns[actor], goalRowFor(actor)).length > 0;
@@ -2349,6 +2460,7 @@
         setFeedback(`<strong>${profile.label} bot moved.</strong> Its new tile is highlighted.`, "bot");
       }
 
+      playActionSound(state.lastAction);
       await renderWithMotion();
       await sleep(260);
 
@@ -2466,6 +2578,7 @@
         state.phase = "game-over";
         state.winner = PLAYER;
         recordWinHistory(PLAYER);
+        playSound(gameMode === "online" && getLocalActor() !== PLAYER ? "defeat" : "win");
         setFeedback("<strong>You win.</strong> Restart to play another round.", "win");
         render();
         return true;
@@ -2476,6 +2589,7 @@
         state.phase = "game-over";
         state.winner = BOT;
         recordWinHistory(BOT);
+        playSound(gameMode === "online" && getLocalActor() === BOT ? "win" : "defeat");
         setFeedback("<strong>Bot wins.</strong> Restart to try again.", "warn");
         render();
         return true;
