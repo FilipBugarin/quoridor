@@ -127,6 +127,38 @@
       padding: clamp(14px, 2vw, 22px);
     }
 
+    .mobile-hud {
+      display: none;
+    }
+
+    .mobile-hud-cell {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(13, 20, 38, 0.72);
+    }
+
+    .mobile-hud-cell span {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 850;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .mobile-hud-cell strong {
+      min-width: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.12;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .board-frame {
       position: relative;
       margin: 0 auto;
@@ -1172,6 +1204,22 @@
         display: grid;
       }
 
+      .mobile-hud {
+        position: sticky;
+        top: 8px;
+        z-index: 12;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0 0 10px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(13, 20, 38, 0.88);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.26);
+        backdrop-filter: blur(12px);
+      }
+
       .board-frame {
         width: min(94vw, 640px);
       }
@@ -1201,6 +1249,10 @@
       .board {
         padding: 6px;
         border-radius: 10px;
+      }
+
+      .mobile-hud {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .panel-section {
@@ -1241,6 +1293,24 @@
 
     <main class="game-shell">
       <section class="board-stage" aria-label="Game board area">
+        <div class="mobile-hud" aria-label="Compact match status">
+          <div class="mobile-hud-cell">
+            <span>Turn</span>
+            <strong id="mobileTurnText">Player turn</strong>
+          </div>
+          <div class="mobile-hud-cell">
+            <span id="mobilePlayerWallsLabel">You walls</span>
+            <strong id="mobilePlayerWalls">10</strong>
+          </div>
+          <div class="mobile-hud-cell">
+            <span id="mobileBotWallsLabel">Bot walls</span>
+            <strong id="mobileBotWalls">10</strong>
+          </div>
+          <div class="mobile-hud-cell">
+            <span id="mobileMetaLabel">Series</span>
+            <strong id="mobileMetaText">0-0</strong>
+          </div>
+        </div>
         <div class="board-frame">
           <div class="board" id="board" aria-label="Quoridor board"></div>
         </div>
@@ -1445,6 +1515,13 @@
     const feedbackEl = document.getElementById("feedback");
     const turnBadgeEl = document.getElementById("turnBadge");
     const contextHelpEl = document.getElementById("contextHelp");
+    const mobileTurnTextEl = document.getElementById("mobileTurnText");
+    const mobilePlayerWallsLabelEl = document.getElementById("mobilePlayerWallsLabel");
+    const mobilePlayerWallsEl = document.getElementById("mobilePlayerWalls");
+    const mobileBotWallsLabelEl = document.getElementById("mobileBotWallsLabel");
+    const mobileBotWallsEl = document.getElementById("mobileBotWalls");
+    const mobileMetaLabelEl = document.getElementById("mobileMetaLabel");
+    const mobileMetaTextEl = document.getElementById("mobileMetaText");
     const modeGridEl = document.getElementById("modeGrid");
     const onlineSectionEl = document.getElementById("onlineSection");
     const difficultySectionEl = document.getElementById("difficultySection");
@@ -1736,6 +1813,7 @@
       playerWallsEl.textContent = `${state.pawns[PLAYER].walls} walls`;
       botWallsEl.textContent = `${state.pawns[BOT].walls} walls`;
       winnerTextEl.textContent = state.winner ? displayNameFor(state.winner) : "None";
+      renderMobileHud(phaseLabel);
       renderHistory();
       renderSoundToggle();
       difficultyHelpEl.textContent = getBotProfile().help;
@@ -1778,6 +1856,23 @@
       }
 
       renderEndgameOverlay();
+    }
+
+    function renderMobileHud(phaseLabel) {
+      mobileTurnTextEl.textContent = phaseLabel;
+      mobilePlayerWallsLabelEl.textContent = gameMode === "online" ? `${sideColor(PLAYER)} walls` : "You walls";
+      mobileBotWallsLabelEl.textContent = gameMode === "online" ? `${sideColor(BOT)} walls` : "Bot walls";
+      mobilePlayerWallsEl.textContent = String(state.pawns[PLAYER].walls);
+      mobileBotWallsEl.textContent = String(state.pawns[BOT].walls);
+
+      if (gameMode === "online") {
+        mobileMetaLabelEl.textContent = localSide === SPECTATOR ? "Watching" : "Room";
+        mobileMetaTextEl.textContent = roomCode || "-";
+        return;
+      }
+
+      mobileMetaLabelEl.textContent = "Series";
+      mobileMetaTextEl.textContent = `${localScore[PLAYER] || 0}-${localScore[BOT] || 0}`;
     }
 
     function getPhaseLabel() {
